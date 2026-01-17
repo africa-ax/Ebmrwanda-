@@ -233,6 +233,11 @@ function loadDashboard(role) {
                 <button class="btn-primary" onclick="alert('Raw Materials feature coming next!')">View Raw Materials</button>
             </div>
             <div class="card">
+                <h3>🛒 Purchase Raw Materials</h3>
+                <p>Buy raw materials from suppliers</p>
+                <button class="btn-primary" onclick="alert('Purchase feature coming next!')">Make Purchase</button>
+            </div>
+            <div class="card">
                 <h3>📊 Inventory</h3>
                 <p>Monitor finished goods stock</p>
                 <button class="btn-primary" onclick="alert('Inventory feature coming next!')">View Inventory</button>
@@ -241,6 +246,11 @@ function loadDashboard(role) {
                 <h3>🤝 Sales</h3>
                 <p>Sell to distributors, retailers, or buyers</p>
                 <button class="btn-success" onclick="alert('Sales feature coming next!')">Create Sale</button>
+            </div>
+            <div class="card">
+                <h3>📄 Invoices</h3>
+                <p>View all invoices (sales & purchases)</p>
+                <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
             </div>
         `;
     }
@@ -383,3 +393,5 @@ function showSuccess(message) {
 
 console.log('App.js loaded successfully');
 
+
+        
