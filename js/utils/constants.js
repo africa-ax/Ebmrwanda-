@@ -1,4 +1,3 @@
-
 // Application Constants
 
 // User Roles
@@ -51,7 +50,7 @@ const ROLE_CAPABILITIES = {
         canCreateProducts: true,
         canManageRawMaterials: true,
         canSellTo: [ROLES.DISTRIBUTOR, ROLES.RETAILER, ROLES.BUYER],
-        canBuyFrom: [ROLES.MANUFACTURER],
+        canBuyFrom: [ROLES.MANUFACTURER, ROLES.DISTRIBUTOR], // Can buy raw materials from other manufacturers or distributors
         hasInventory: true,
         hasRawMaterials: true
     },
@@ -136,4 +135,5 @@ if (typeof module !== 'undefined' && module.exports) {
         SUCCESS_MESSAGES,
         VALIDATION
     };
-}
+    }
+    
