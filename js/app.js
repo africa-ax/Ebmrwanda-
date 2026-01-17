@@ -300,6 +300,11 @@ function loadDashboard(role) {
                 <button class="btn-success" onclick="alert('Sales feature coming next!')">Create Sale</button>
             </div>
             <div class="card">
+                <h3>🛍️ Sell to Walk-in Customer</h3>
+                <p>Help customers without smartphone</p>
+                <button class="btn-success" onclick="alert('Walk-in Sale feature coming next!')">Quick Sale</button>
+            </div>
+            <div class="card">
                 <h3>📄 Invoices</h3>
                 <p>View generated invoices</p>
                 <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
@@ -393,5 +398,4 @@ function showSuccess(message) {
 
 console.log('App.js loaded successfully');
 
-
-        
+    
