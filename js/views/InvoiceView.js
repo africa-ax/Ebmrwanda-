@@ -153,7 +153,9 @@ async function loadInvoicesList(filter = 'all') {
                         <th>From</th>
                         <th>To</th>
                         <th>Products</th>
-                        <th>Amount</th>
+                        <th>Subtotal</th>
+                        <th>VAT</th>
+                        <th>Total</th>
                         <th>Status</th>
                         <th>Actions</th>
                     </tr>
@@ -165,6 +167,8 @@ async function loadInvoicesList(filter = 'all') {
             const date = invoice.generatedAt?.toDate?.() || new Date();
             const isSeller = invoice.sellerId === currentUser.uid;
             const statusColor = invoice.paymentStatus === 'paid' ? '#4caf50' : '#f44336';
+            const subtotal = invoice.subtotal || 0;
+            const totalVAT = invoice.totalVAT || 0;
             
             html += `
                 <tr data-invoice-number="${invoice.invoiceNumber.toLowerCase()}"
@@ -175,6 +179,8 @@ async function loadInvoicesList(filter = 'all') {
                     <td>${invoice.sellerName}<br><small style="color: #999;">${invoice.sellerRole}</small></td>
                     <td>${invoice.buyerName}<br><small style="color: #999;">${invoice.buyerRole}</small></td>
                     <td>${invoice.items.length} item(s)</td>
+                    <td>${subtotal.toFixed(2)}</td>
+                    <td>${totalVAT.toFixed(2)}</td>
                     <td><strong>${invoice.totalAmount.toFixed(2)}</strong></td>
                     <td>
                         <span style="background: ${statusColor}; color: white; padding: 0.25rem 0.75rem; border-radius: 12px; font-size: 0.85rem;">
@@ -261,13 +267,17 @@ async function showInvoiceDetail(invoiceId) {
 
     let itemsHTML = '';
     invoice.items.forEach(item => {
+        const itemVATRate = item.vatRate || 0;
+        const itemVAT = item.itemVAT || 0;
+        
         itemsHTML += `
             <tr>
                 <td>${item.productName}</td>
                 <td>${item.productSKU}</td>
                 <td>${item.quantity} ${item.unit}</td>
                 <td>${item.pricePerUnit.toFixed(2)}</td>
-                <td><strong>${item.totalPrice.toFixed(2)}</strong></td>
+                <td>${itemVATRate}% (${itemVAT.toFixed(2)})</td>
+                <td><strong>${item.totalPrice ? item.totalPrice.toFixed(2) : (item.itemTotal || (item.quantity * item.pricePerUnit)).toFixed(2)}</strong></td>
             </tr>
         `;
     });
@@ -316,6 +326,7 @@ async function showInvoiceDetail(invoiceId) {
                             <th style="color: white; padding: 1rem; text-align: left;">SKU</th>
                             <th style="color: white; padding: 1rem; text-align: left;">Quantity</th>
                             <th style="color: white; padding: 1rem; text-align: left;">Price/Unit</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">VAT</th>
                             <th style="color: white; padding: 1rem; text-align: left;">Total</th>
                         </tr>
                     </thead>
@@ -326,6 +337,12 @@ async function showInvoiceDetail(invoiceId) {
 
                 <!-- Total -->
                 <div style="text-align: right; border-top: 2px solid #e0e0e0; padding-top: 1rem; margin-top: 1rem;">
+                    <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">
+                        Subtotal: ${(invoice.subtotal || 0).toFixed(2)}
+                    </p>
+                    <p style="font-size: 1.2rem; margin-bottom: 0.5rem; color: #f093fb;">
+                        <strong>VAT: ${(invoice.totalVAT || 0).toFixed(2)}</strong>
+                    </p>
                     <p style="font-size: 1.5rem; color: #667eea;">
                         <strong>Total Amount: ${invoice.totalAmount.toFixed(2)}</strong>
                     </p>
@@ -416,5 +433,4 @@ async function printInvoice(invoiceId) {
 }
 
 console.log('Invoice view loaded');
-
-
+                           
