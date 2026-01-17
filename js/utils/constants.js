@@ -28,6 +28,15 @@ const INVOICE_STATUS = {
     CANCELLED: 'cancelled'
 };
 
+// Order Status
+const ORDER_STATUS = {
+    PENDING: 'pending',
+    CONFIRMED: 'confirmed',
+    REJECTED: 'rejected',
+    COMPLETED: 'completed',
+    CANCELLED: 'cancelled'
+};
+
 // Common Units
 const UNITS = [
     'piece',
@@ -87,7 +96,9 @@ const COLLECTIONS = {
     STOCK: 'stock',
     RAW_MATERIALS: 'rawMaterials',
     TRANSACTIONS: 'transactions',
-    INVOICES: 'invoices'
+    INVOICES: 'invoices',
+    ORDERS: 'orders', // New: for pending orders
+    CARTS: 'carts' // New: for shopping carts
 };
 
 // Error Messages
@@ -136,4 +147,3 @@ if (typeof module !== 'undefined' && module.exports) {
         VALIDATION
     };
     }
-    
