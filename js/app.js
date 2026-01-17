@@ -243,6 +243,11 @@ function loadDashboard(role) {
                 <button class="btn-primary" onclick="loadInventoryPage()">View Inventory</button>
             </div>
             <div class="card">
+                <h3>📋 Orders</h3>
+                <p>Manage incoming orders from buyers</p>
+                <button class="btn-success" onclick="loadOrderManagementPage()">Manage Orders</button>
+            </div>
+            <div class="card">
                 <h3>🤝 Sales</h3>
                 <p>Sell to distributors, retailers, or buyers</p>
                 <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
@@ -269,6 +274,11 @@ function loadDashboard(role) {
                 <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
             </div>
             <div class="card">
+                <h3>📋 Orders</h3>
+                <p>Manage incoming orders from buyers</p>
+                <button class="btn-success" onclick="loadOrderManagementPage()">Manage Orders</button>
+            </div>
+            <div class="card">
                 <h3>🤝 Sales</h3>
                 <p>Sell to retailers or buyers</p>
                 <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
@@ -293,6 +303,11 @@ function loadDashboard(role) {
                 <h3>🛒 Purchase</h3>
                 <p>Buy from manufacturers or distributors</p>
                 <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
+            </div>
+            <div class="card">
+                <h3>📋 Orders</h3>
+                <p>Manage incoming orders from buyers</p>
+                <button class="btn-success" onclick="loadOrderManagementPage()">Manage Orders</button>
             </div>
             <div class="card">
                 <h3>🤝 Sales</h3>
@@ -375,6 +390,18 @@ function loadInventoryPage() {
         showInventoryPage();
     } else {
         showComingSoon('Inventory Management');
+    }
+}
+
+/**
+ * Load Order Management Page
+ */
+function loadOrderManagementPage() {
+    console.log('Loading Order Management Page...');
+    if (typeof showOrderManagementPage === 'function') {
+        showOrderManagementPage();
+    } else {
+        showComingSoon('Order Management');
     }
 }
 
