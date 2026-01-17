@@ -43,9 +43,16 @@ async function showProductsPage() {
                             </select>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label for="productSKU">SKU (Optional - Auto-generated if empty)</label>
-                        <input type="text" id="productSKU" placeholder="e.g., BAN-001">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                        <div class="form-group">
+                            <label for="productSKU">SKU (Optional - Auto-generated if empty)</label>
+                            <input type="text" id="productSKU" placeholder="e.g., BAN-001">
+                        </div>
+                        <div class="form-group">
+                            <label for="productVAT">VAT Rate (%) *</label>
+                            <input type="number" id="productVAT" min="0" max="100" step="0.01" value="0" required placeholder="e.g., 18">
+                            <small style="color: #999;">This VAT rate will apply across all transactions</small>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label for="productDescription">Description (Optional)</label>
@@ -106,6 +113,7 @@ async function loadProductsList() {
                         <th>Product Name</th>
                         <th>SKU</th>
                         <th>Unit</th>
+                        <th>VAT Rate</th>
                         <th>Description</th>
                         <th>Created</th>
                         <th>Actions</th>
@@ -116,11 +124,13 @@ async function loadProductsList() {
 
         products.forEach(product => {
             const createdDate = product.createdAt?.toDate?.() || new Date();
+            const vatRate = product.vatRate || 0;
             html += `
                 <tr data-product-name="${product.name.toLowerCase()}" data-product-sku="${product.sku.toLowerCase()}">
                     <td><strong>${product.name}</strong></td>
                     <td>${product.sku}</td>
                     <td>${product.unit}</td>
+                    <td>${vatRate}%</td>
                     <td>${product.description || '-'}</td>
                     <td>${createdDate.toLocaleDateString()}</td>
                     <td>
@@ -183,7 +193,8 @@ async function handleCreateProduct(event) {
         name: document.getElementById('productName').value.trim(),
         unit: document.getElementById('productUnit').value,
         sku: document.getElementById('productSKU').value.trim() || undefined,
-        description: document.getElementById('productDescription').value.trim()
+        description: document.getElementById('productDescription').value.trim(),
+        vatRate: parseFloat(document.getElementById('productVAT').value) || 0
     };
 
     // Show loading
@@ -241,6 +252,10 @@ async function showEditProductForm(productId) {
                         </select>
                     </div>
                     <div class="form-group">
+                        <label for="editProductVAT">VAT Rate (%) *</label>
+                        <input type="number" id="editProductVAT" value="${product.vatRate || 0}" min="0" max="100" step="0.01" required>
+                    </div>
+                    <div class="form-group">
                         <label for="editProductDescription">Description</label>
                         <textarea id="editProductDescription" rows="3" maxlength="500">${product.description || ''}</textarea>
                     </div>
@@ -270,7 +285,8 @@ async function handleEditProduct(event, productId) {
     const updates = {
         name: document.getElementById('editProductName').value.trim(),
         unit: document.getElementById('editProductUnit').value,
-        description: document.getElementById('editProductDescription').value.trim()
+        description: document.getElementById('editProductDescription').value.trim(),
+        vatRate: parseFloat(document.getElementById('editProductVAT').value) || 0
     };
 
     const submitBtn = event.target.querySelector('button[type="submit"]');
@@ -345,4 +361,4 @@ function filterProducts() {
 }
 
 console.log('Product view loaded');
-        
+                                    
