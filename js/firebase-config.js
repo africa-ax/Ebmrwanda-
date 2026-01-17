@@ -41,6 +41,11 @@ auth.onAuthStateChanged(async (user) => {
             if (userDoc.exists) {
                 currentUserData = { id: user.uid, ...userDoc.data() };
                 console.log('User role:', currentUserData.role);
+            } else {
+                console.warn('User document not found in Firestore');
+                // User authenticated but no Firestore document - this shouldn't happen
+                // Try to create it if we have the user's email
+                currentUserData = null;
             }
         } catch (error) {
             console.error('Error loading user data:', error);
@@ -121,6 +126,7 @@ function canBuyFrom(sellerRole) {
 
 /**
  * Register new user
+ * FIXED: Proper error handling and document creation
  */
 async function registerUser(email, password, userData) {
     try {
@@ -128,7 +134,7 @@ async function registerUser(email, password, userData) {
         const userCredential = await auth.createUserWithEmailAndPassword(email, password);
         const user = userCredential.user;
 
-        // Create user document in Firestore
+        // Create user document in Firestore using SET (not update)
         await db.collection(COLLECTIONS.USERS).doc(user.uid).set({
             email: email,
             name: userData.name,
@@ -144,27 +150,55 @@ async function registerUser(email, password, userData) {
         return { success: true, user };
     } catch (error) {
         console.error('Registration error:', error);
-        return { success: false, error: error.message };
+        
+        // Provide user-friendly error messages
+        let errorMessage = error.message;
+        if (error.code === 'auth/email-already-in-use') {
+            errorMessage = 'This email is already registered. Please login instead.';
+        } else if (error.code === 'auth/weak-password') {
+            errorMessage = 'Password is too weak. Please use a stronger password.';
+        } else if (error.code === 'auth/invalid-email') {
+            errorMessage = 'Invalid email address.';
+        }
+        
+        return { success: false, error: errorMessage };
     }
 }
 
 /**
  * Login user
+ * FIXED: Use SET with merge instead of UPDATE to avoid "no document" error
  */
 async function loginUser(email, password) {
     try {
         const userCredential = await auth.signInWithEmailAndPassword(email, password);
         
-        // Update last login
-        await db.collection(COLLECTIONS.USERS).doc(userCredential.user.uid).update({
-            'metadata.lastLogin': firebase.firestore.FieldValue.serverTimestamp()
-        });
+        // Use SET with merge option instead of UPDATE
+        // This creates the document if it doesn't exist
+        await db.collection(COLLECTIONS.USERS).doc(userCredential.user.uid).set({
+            metadata: {
+                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
+            }
+        }, { merge: true }); // CRITICAL: merge option prevents overwriting existing data
 
         console.log('User logged in:', userCredential.user.email);
         return { success: true, user: userCredential.user };
     } catch (error) {
         console.error('Login error:', error);
-        return { success: false, error: error.message };
+        
+        // Provide user-friendly error messages
+        let errorMessage = error.message;
+        if (error.code === 'auth/user-not-found') {
+            errorMessage = 'No account found with this email. Please register first.';
+        } else if (error.code === 'auth/wrong-password') {
+            errorMessage = 'Incorrect password. Please try again.';
+        } else if (error.code === 'auth/invalid-email') {
+            errorMessage = 'Invalid email address.';
+        } else if (error.code === 'auth/too-many-requests') {
+            errorMessage = 'Too many failed login attempts. Please try again later.';
+        }
+        
+        return { success: false, error: errorMessage };
     }
 }
 
@@ -203,5 +237,5 @@ function generateId() {
     return db.collection('_dummy').doc().id;
 }
 
-console.log('Firebase initialized succussfully');
-  
+console.log('Firebase initialized successfully');
+    
