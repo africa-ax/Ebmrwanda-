@@ -270,18 +270,13 @@ function loadDashboard(role) {
             </div>
             <div class="card">
                 <h3>🛒 Purchase</h3>
-                <p>Buy from manufacturers</p>
-                <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
+                <p>Search and buy from sellers</p>
+                <button class="btn-primary" onclick="loadPurchasePage()">Purchase</button>
             </div>
             <div class="card">
-                <h3>📋 Orders</h3>
-                <p>Manage incoming orders from buyers</p>
-                <button class="btn-success" onclick="loadOrderManagementPage()">Manage Orders</button>
-            </div>
-            <div class="card">
-                <h3>🤝 Sales</h3>
-                <p>Sell to retailers or buyers</p>
-                <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
+                <h3>📋 Orders (Sales)</h3>
+                <p>Approve/reject incoming orders</p>
+                <button class="btn-success" onclick="loadSalesPage()">Manage Orders</button>
             </div>
             <div class="card">
                 <h3>📄 Invoices</h3>
@@ -301,21 +296,16 @@ function loadDashboard(role) {
             </div>
             <div class="card">
                 <h3>🛒 Purchase</h3>
-                <p>Buy from manufacturers or distributors</p>
-                <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
+                <p>Search and buy products</p>
+                <button class="btn-primary" onclick="loadPurchasePage()">Purchase</button>
             </div>
             <div class="card">
-                <h3>📋 Orders</h3>
-                <p>Manage incoming orders from buyers</p>
-                <button class="btn-success" onclick="loadOrderManagementPage()">Manage Orders</button>
+                <h3>📋 Orders (Sales)</h3>
+                <p>Approve/reject incoming orders</p>
+                <button class="btn-success" onclick="loadSalesPage()">Manage Orders</button>
             </div>
             <div class="card">
-                <h3>🤝 Sales</h3>
-                <p>Sell to buyers</p>
-                <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
-            </div>
-            <div class="card">
-                <h3>🛍️ Sell to Walk-in Customer</h3>
+                <h3>🛍️ Walk-in Customer</h3>
                 <p>Help customers without smartphone</p>
                 <button class="btn-success" onclick="loadWalkInSalePage()">Quick Sale</button>
             </div>
