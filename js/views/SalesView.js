@@ -1,7 +1,7 @@
-// Sales View - Create Sales/Transactions Interface
+// Sales View - Order Management (Approve/Reject Orders)
 
 /**
- * Show Sales Page
+ * Show Sales/Orders Page - Central hub for managing all incoming orders
  */
 async function showSalesPage() {
     if (!currentUserData) {
@@ -9,13 +9,13 @@ async function showSalesPage() {
         return;
     }
 
-    // Check if user can sell
+    // Check if user can sell (has orders to manage)
     const capabilities = ROLE_CAPABILITIES[currentUserData.role];
     if (!capabilities || capabilities.canSellTo.length === 0) {
         mainContent.innerHTML = `
             <div style="background: white; padding: 2rem; border-radius: 12px; text-align: center;">
-                <h2 style="color: #f44336;">Cannot Sell</h2>
-                <p>Your role cannot sell products.</p>
+                <h2 style="color: #f44336;">No Orders to Manage</h2>
+                <p>Your role cannot receive orders.</p>
                 <button class="btn-primary" onclick="loadDashboard('${currentUserData.role}')">Back to Dashboard</button>
             </div>
         `;
@@ -25,391 +25,185 @@ async function showSalesPage() {
     mainContent.innerHTML = `
         <div style="background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                <h2 style="color: #667eea;">🤝 Create Sale</h2>
+                <h2 style="color: #667eea;">📋 Orders Management</h2>
                 <button class="btn-secondary" onclick="loadDashboard('${currentUserData.role}')">Back</button>
             </div>
 
-            <!-- Sale Form -->
-            <div style="background: #f5f5f5; padding: 2rem; border-radius: 8px;">
-                <form id="saleForm" onsubmit="handleCreateSale(event)">
-                    
-                    <!-- Step 1: Select Buyer -->
-                    <div class="form-group">
-                        <label for="buyerSelect">1. Select Buyer *</label>
-                        <select id="buyerSelect" required onchange="updateBuyerInfo()">
-                            <option value="">Select Buyer</option>
-                        </select>
-                        <div id="buyerInfo" style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;"></div>
-                    </div>
-
-                    <!-- Step 2: Select Product from Your Stock -->
-                    <div class="form-group">
-                        <label for="productSelect">2. Select Product from Your Stock *</label>
-                        <select id="productSelect" required onchange="updateProductInfo()">
-                            <option value="">Select Product</option>
-                        </select>
-                        <div id="productInfo" style="margin-top: 0.5rem; color: #666; font-size: 0.9rem;"></div>
-                    </div>
-
-                    <!-- Step 3: Quantity -->
-                    <div class="form-group">
-                        <label for="saleQuantity">3. Quantity *</label>
-                        <input type="number" id="saleQuantity" step="0.01" min="0.01" required 
-                               placeholder="Enter quantity" onchange="calculateSaleTotal()">
-                        <small id="availableStock" style="color: #666;"></small>
-                    </div>
-
-                    <!-- Step 4: Price Per Unit -->
-                    <div class="form-group">
-                        <label for="salePricePerUnit">4. Price Per Unit *</label>
-                        <input type="number" id="salePricePerUnit" step="0.01" min="0.01" required 
-                               placeholder="Your selling price" onchange="calculateSaleTotal()">
-                        <small style="color: #666;">This is what you're charging the buyer</small>
-                    </div>
-
-                    <!-- Step 5: Buyer's Selling Price (Optional) -->
-                    <div class="form-group">
-                        <label for="buyerSellingPrice">5. Buyer's Selling Price (Optional)</label>
-                        <input type="number" id="buyerSellingPrice" step="0.01" min="0.01" 
-                               placeholder="Price buyer will sell at (leave empty to use your price)">
-                        <small style="color: #666;">The buyer can set their own markup. If empty, uses your price.</small>
-                    </div>
-
-                    <!-- Sale Summary -->
-                    <div id="saleSummary" style="background: white; padding: 1.5rem; border-radius: 8px; margin: 1.5rem 0; display: none;">
-                        <h3 style="color: #667eea; margin-bottom: 1rem;">Sale Summary</h3>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                            <div>
-                                <p style="color: #666;">Product:</p>
-                                <p id="summaryProduct" style="font-weight: bold;"></p>
-                            </div>
-                            <div>
-                                <p style="color: #666;">Buyer:</p>
-                                <p id="summaryBuyer" style="font-weight: bold;"></p>
-                            </div>
-                            <div>
-                                <p style="color: #666;">Quantity:</p>
-                                <p id="summaryQuantity" style="font-weight: bold;"></p>
-                            </div>
-                            <div>
-                                <p style="color: #666;">Price/Unit:</p>
-                                <p id="summaryPrice" style="font-weight: bold;"></p>
-                            </div>
-                        </div>
-                        <hr style="margin: 1rem 0;">
-                        <div style="text-align: right;">
-                            <p style="font-size: 1.2rem; color: #667eea;">
-                                <strong>Total Amount: <span id="summaryTotal">0.00</span></strong>
-                            </p>
-                        </div>
-                    </div>
-
-                    <!-- Submit Button -->
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" class="btn-success">Complete Sale & Generate Invoice</button>
-                        <button type="button" class="btn-secondary" onclick="document.getElementById('saleForm').reset(); hideSaleSummary()">Reset</button>
-                    </div>
-
-                    <p id="saleFormError" class="error-message"></p>
-                    <p id="saleFormSuccess" class="success-message"></p>
-                </form>
+            <!-- Order Status Tabs -->
+            <div style="display: flex; gap: 1rem; margin-bottom: 2rem; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.5rem; flex-wrap: wrap;">
+                <button id="tabPending" class="tab-button active" onclick="filterSalesOrdersByStatus('pending')">
+                    ⏳ Pending (<span id="pendingCount">0</span>)
+                </button>
+                <button id="tabConfirmed" class="tab-button" onclick="filterSalesOrdersByStatus('confirmed')">
+                    ✅ Approved (<span id="confirmedCount">0</span>)
+                </button>
+                <button id="tabRejected" class="tab-button" onclick="filterSalesOrdersByStatus('rejected')">
+                    ❌ Rejected (<span id="rejectedCount">0</span>)
+                </button>
+                <button id="tabAll" class="tab-button" onclick="filterSalesOrdersByStatus('all')">
+                    📋 All Orders
+                </button>
             </div>
 
-            <!-- Recent Sales -->
-            <div style="margin-top: 3rem;">
-                <h3 style="color: #667eea; margin-bottom: 1rem;">Recent Sales</h3>
-                <div id="recentSalesList">
-                    <div style="text-align: center; padding: 2rem;">
-                        <div class="spinner"></div>
-                        <p>Loading recent sales...</p>
-                    </div>
+            <!-- Order Summary Cards -->
+            <div id="orderSummary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
+                <!-- Summary will be loaded here -->
+            </div>
+
+            <!-- Orders List -->
+            <div id="salesOrdersList">
+                <div style="text-align: center; padding: 2rem;">
+                    <div class="spinner"></div>
+                    <p>Loading orders...</p>
                 </div>
             </div>
         </div>
     `;
 
-    // Load data
-    await Promise.all([
-        loadBuyersForSale(),
-        loadProductsForSale(),
-        loadRecentSales()
-    ]);
+    // Load orders
+    await loadSalesOrders('pending');
 }
 
+let allSalesOrders = [];
+let currentSalesOrderStatusFilter = 'pending';
+
 /**
- * Load potential buyers based on current user role
+ * Load seller's orders for sales management
  */
-async function loadBuyersForSale() {
-    const buyerSelect = document.getElementById('buyerSelect');
-    if (!buyerSelect) return;
+async function loadSalesOrders(statusFilter = 'all') {
+    const ordersListDiv = document.getElementById('salesOrdersList');
+    const summaryDiv = document.getElementById('orderSummary');
+    
+    if (!ordersListDiv) return;
 
     try {
-        const capabilities = ROLE_CAPABILITIES[currentUserData.role];
-        const allowedRoles = capabilities.canSellTo;
-
-        // Get all users with allowed roles
-        const usersSnapshot = await db.collection(COLLECTIONS.USERS)
-            .where('role', 'in', allowedRoles)
+        // Get all orders where current user is the seller
+        const allOrdersSnapshot = await db.collection(COLLECTIONS.ORDERS)
+            .where('sellerId', '==', currentUser.uid)
+            .orderBy('createdAt', 'desc')
             .get();
 
-        buyerSelect.innerHTML = '<option value="">Select Buyer</option>';
-
-        usersSnapshot.forEach(doc => {
-            const userData = doc.data();
-            // Don't show self as buyer
-            if (doc.id !== currentUser.uid) {
-                buyerSelect.innerHTML += `
-                    <option value="${doc.id}" data-name="${userData.name}" data-role="${userData.role}">
-                        ${userData.name} (${userData.role})
-                    </option>
-                `;
-            }
+        allSalesOrders = [];
+        allOrdersSnapshot.forEach(doc => {
+            allSalesOrders.push({ id: doc.id, ...doc.data() });
         });
 
-    } catch (error) {
-        console.error('Error loading buyers:', error);
-        showError('Failed to load buyers');
-    }
-}
+        currentSalesOrderStatusFilter = statusFilter;
 
-/**
- * Load user's stock products for sale
- */
-async function loadProductsForSale() {
-    const productSelect = document.getElementById('productSelect');
-    if (!productSelect) return;
-
-    try {
-        const stockItems = await getMyStock(STOCK_TYPES.INVENTORY);
-
-        productSelect.innerHTML = '<option value="">Select Product</option>';
-
-        stockItems.forEach(stock => {
-            productSelect.innerHTML += `
-                <option value="${stock.productId}" 
-                        data-stock-id="${stock.id}"
-                        data-name="${stock.productName}"
-                        data-sku="${stock.productSKU}"
-                        data-unit="${stock.productUnit}"
-                        data-quantity="${stock.quantity}"
-                        data-price="${stock.sellingPrice}">
-                    ${stock.productName} (${stock.productSKU}) - Available: ${stock.quantity} ${stock.productUnit}
-                </option>
-            `;
-        });
-
-        if (stockItems.length === 0) {
-            productSelect.innerHTML = '<option value="">No products in stock</option>';
+        // Filter orders
+        let filteredOrders = allSalesOrders;
+        if (statusFilter === 'pending') {
+            filteredOrders = allSalesOrders.filter(o => o.status === ORDER_STATUS.PENDING);
+        } else if (statusFilter === 'confirmed') {
+            filteredOrders = allSalesOrders.filter(o => o.status === ORDER_STATUS.CONFIRMED);
+        } else if (statusFilter === 'rejected') {
+            filteredOrders = allSalesOrders.filter(o => o.status === ORDER_STATUS.REJECTED);
         }
 
-    } catch (error) {
-        console.error('Error loading products:', error);
-        showError('Failed to load products');
-    }
-}
+        // Calculate summary
+        const pendingCount = allSalesOrders.filter(o => o.status === ORDER_STATUS.PENDING).length;
+        const confirmedCount = allSalesOrders.filter(o => o.status === ORDER_STATUS.CONFIRMED).length;
+        const rejectedCount = allSalesOrders.filter(o => o.status === ORDER_STATUS.REJECTED).length;
+        const totalRevenue = allSalesOrders
+            .filter(o => o.status === ORDER_STATUS.CONFIRMED)
+            .reduce((sum, o) => sum + o.totalAmount, 0);
 
-/**
- * Update buyer info display
- */
-function updateBuyerInfo() {
-    const buyerSelect = document.getElementById('buyerSelect');
-    const buyerInfo = document.getElementById('buyerInfo');
-    const selectedOption = buyerSelect.options[buyerSelect.selectedIndex];
+        // Update counts in tabs
+        document.getElementById('pendingCount').textContent = pendingCount;
+        document.getElementById('confirmedCount').textContent = confirmedCount;
+        document.getElementById('rejectedCount').textContent = rejectedCount;
 
-    if (selectedOption.value) {
-        const buyerName = selectedOption.getAttribute('data-name');
-        const buyerRole = selectedOption.getAttribute('data-role');
-        buyerInfo.innerHTML = `✓ Selected: <strong>${buyerName}</strong> (${buyerRole})`;
-    } else {
-        buyerInfo.innerHTML = '';
-    }
+        summaryDiv.innerHTML = `
+            <div class="card" style="padding: 1rem; background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">
+                <h4 style="color: white; margin-bottom: 0.5rem;">${pendingCount}</h4>
+                <p style="color: white; font-size: 0.9rem;">⏳ Pending Orders</p>
+            </div>
+            <div class="card" style="padding: 1rem; background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);">
+                <h4 style="color: white; margin-bottom: 0.5rem;">${confirmedCount}</h4>
+                <p style="color: white; font-size: 0.9rem;">✅ Approved Orders</p>
+            </div>
+            <div class="card" style="padding: 1rem; background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);">
+                <h4 style="color: white; margin-bottom: 0.5rem;">${rejectedCount}</h4>
+                <p style="color: white; font-size: 0.9rem;">❌ Rejected Orders</p>
+            </div>
+            <div class="card" style="padding: 1rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+                <h4 style="color: white; margin-bottom: 0.5rem;">${totalRevenue.toFixed(2)}</h4>
+                <p style="color: white; font-size: 0.9rem;">💰 Total Revenue</p>
+            </div>
+        `;
 
-    calculateSaleTotal();
-}
-
-/**
- * Update product info display
- */
-function updateProductInfo() {
-    const productSelect = document.getElementById('productSelect');
-    const productInfo = document.getElementById('productInfo');
-    const availableStock = document.getElementById('availableStock');
-    const salePriceInput = document.getElementById('salePricePerUnit');
-    const selectedOption = productSelect.options[productSelect.selectedIndex];
-
-    if (selectedOption.value) {
-        const productName = selectedOption.getAttribute('data-name');
-        const quantity = selectedOption.getAttribute('data-quantity');
-        const unit = selectedOption.getAttribute('data-unit');
-        const price = selectedOption.getAttribute('data-price');
-
-        productInfo.innerHTML = `✓ Selected: <strong>${productName}</strong>`;
-        availableStock.textContent = `Available: ${quantity} ${unit}`;
-        
-        // Pre-fill with current selling price
-        salePriceInput.value = price;
-    } else {
-        productInfo.innerHTML = '';
-        availableStock.textContent = '';
-        salePriceInput.value = '';
-    }
-
-    calculateSaleTotal();
-}
-
-/**
- * Calculate and display sale total
- */
-function calculateSaleTotal() {
-    const productSelect = document.getElementById('productSelect');
-    const buyerSelect = document.getElementById('buyerSelect');
-    const quantity = parseFloat(document.getElementById('saleQuantity').value) || 0;
-    const pricePerUnit = parseFloat(document.getElementById('salePricePerUnit').value) || 0;
-
-    if (productSelect.value && buyerSelect.value && quantity > 0 && pricePerUnit > 0) {
-        const selectedProduct = productSelect.options[productSelect.selectedIndex];
-        const selectedBuyer = buyerSelect.options[buyerSelect.selectedIndex];
-        
-        const total = quantity * pricePerUnit;
-
-        document.getElementById('saleSummary').style.display = 'block';
-        document.getElementById('summaryProduct').textContent = selectedProduct.getAttribute('data-name');
-        document.getElementById('summaryBuyer').textContent = selectedBuyer.getAttribute('data-name');
-        document.getElementById('summaryQuantity').textContent = `${quantity} ${selectedProduct.getAttribute('data-unit')}`;
-        document.getElementById('summaryPrice').textContent = pricePerUnit.toFixed(2);
-        document.getElementById('summaryTotal').textContent = total.toFixed(2);
-    } else {
-        hideSaleSummary();
-    }
-}
-
-/**
- * Hide sale summary
- */
-function hideSaleSummary() {
-    document.getElementById('saleSummary').style.display = 'none';
-}
-
-/**
- * Handle create sale form submission
- */
-async function handleCreateSale(event) {
-    event.preventDefault();
-
-    const errorElement = document.getElementById('saleFormError');
-    const successElement = document.getElementById('saleFormSuccess');
-    errorElement.textContent = '';
-    successElement.textContent = '';
-
-    const buyerId = document.getElementById('buyerSelect').value;
-    const productId = document.getElementById('productSelect').value;
-    const quantity = parseFloat(document.getElementById('saleQuantity').value);
-    const pricePerUnit = parseFloat(document.getElementById('salePricePerUnit').value);
-    const buyerSellingPrice = document.getElementById('buyerSellingPrice').value 
-        ? parseFloat(document.getElementById('buyerSellingPrice').value) 
-        : pricePerUnit; // Use seller price if buyer price not specified
-
-    // Validate quantity against available stock
-    const productSelect = document.getElementById('productSelect');
-    const selectedOption = productSelect.options[productSelect.selectedIndex];
-    const availableQuantity = parseFloat(selectedOption.getAttribute('data-quantity'));
-
-    if (quantity > availableQuantity) {
-        errorElement.textContent = `Insufficient stock. Available: ${availableQuantity}`;
-        return;
-    }
-
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Processing Sale...';
-    submitBtn.disabled = true;
-
-    const result = await createTransaction({
-        sellerId: currentUser.uid,
-        buyerId: buyerId,
-        productId: productId,
-        quantity: quantity,
-        pricePerUnit: pricePerUnit,
-        buyerSellingPrice: buyerSellingPrice,
-        type: TRANSACTION_TYPES.SALE
-    });
-
-    submitBtn.textContent = originalText;
-    submitBtn.disabled = false;
-
-    if (result.success) {
-        successElement.textContent = '✓ Sale completed successfully! Invoice generated.';
-        
-        // Show invoice option
-        if (result.invoice) {
-            successElement.innerHTML += `<br><button class="btn-primary" style="margin-top: 1rem;" onclick="viewInvoice('${result.invoice.id}')">View Invoice</button>`;
-        }
-
-        // Reset form
-        document.getElementById('saleForm').reset();
-        hideSaleSummary();
-
-        // Reload products and recent sales
-        await Promise.all([
-            loadProductsForSale(),
-            loadRecentSales()
-        ]);
-
-    } else {
-        errorElement.textContent = result.error;
-    }
-}
-
-/**
- * Load recent sales
- */
-async function loadRecentSales() {
-    const recentSalesDiv = document.getElementById('recentSalesList');
-    if (!recentSalesDiv) return;
-
-    try {
-        const transactions = await getMyTransactions('seller');
-        const recentSales = transactions.slice(0, 10); // Last 10 sales
-
-        if (recentSales.length === 0) {
-            recentSalesDiv.innerHTML = `
-                <div style="text-align: center; padding: 2rem; color: #999;">
-                    <p>No sales yet</p>
+        if (filteredOrders.length === 0) {
+            ordersListDiv.innerHTML = `
+                <div style="text-align: center; padding: 3rem; color: #999;">
+                    <p style="font-size: 1.2rem;">No ${statusFilter === 'all' ? '' : statusFilter} orders</p>
+                    ${statusFilter === 'pending' ? '<p style="font-size: 0.9rem; margin-top: 0.5rem;">New orders from buyers will appear here</p>' : ''}
                 </div>
             `;
             return;
         }
 
         let html = `
-            <table>
+            <div style="overflow-x: auto;">
+            <table style="min-width: 100%;">
                 <thead>
                     <tr>
+                        <th>Order #</th>
                         <th>Date</th>
                         <th>Buyer</th>
-                        <th>Product</th>
-                        <th>Quantity</th>
-                        <th>Price/Unit</th>
+                        <th>Items</th>
+                        <th>Subtotal</th>
+                        <th>VAT</th>
                         <th>Total</th>
-                        <th>Invoice</th>
+                        <th>Status</th>
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
-        recentSales.forEach(sale => {
-            const date = sale.timestamp?.toDate?.() || new Date();
+        filteredOrders.forEach(order => {
+            const date = order.createdAt?.toDate?.() || new Date();
+            const statusColor = order.status === ORDER_STATUS.CONFIRMED ? '#4caf50' :
+                                order.status === ORDER_STATUS.PENDING ? '#f093fb' : '#f44336';
+
             html += `
-                <tr>
-                    <td>${date.toLocaleDateString()} ${date.toLocaleTimeString()}</td>
-                    <td>${sale.buyerName}</td>
-                    <td>${sale.productName}</td>
-                    <td>${sale.quantity} ${sale.productUnit}</td>
-                    <td>${sale.pricePerUnit.toFixed(2)}</td>
-                    <td><strong>${sale.totalAmount.toFixed(2)}</strong></td>
-                    <td>
-                        ${sale.invoiceId ? 
-                            `<button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" onclick="viewInvoice('${sale.invoiceId}')">View</button>` : 
-                            '-'}
+                <tr style="border-bottom: 1px solid #e0e0e0;">
+                    <td style="padding: 1rem;"><strong>${order.orderNumber}</strong></td>
+                    <td style="padding: 1rem;">${date.toLocaleDateString()}<br><small style="color: #999;">${date.toLocaleTimeString()}</small></td>
+                    <td style="padding: 1rem;">
+                        <strong>${order.buyerName}</strong><br>
+                        <small style="color: #999;">${order.buyerRole}</small>
+                    </td>
+                    <td style="padding: 1rem;">${order.items.length} item(s)</td>
+                    <td style="padding: 1rem;">${order.subtotal.toFixed(2)}</td>
+                    <td style="padding: 1rem;">${order.totalVAT.toFixed(2)}</td>
+                    <td style="padding: 1rem;"><strong style="font-size: 1.1rem;">${order.totalAmount.toFixed(2)}</strong></td>
+                    <td style="padding: 1rem;">
+                        <span style="background: ${statusColor}; color: white; padding: 0.4rem 0.8rem; border-radius: 12px; font-size: 0.85rem; white-space: nowrap;">
+                            ${order.status}
+                        </span>
+                    </td>
+                    <td style="padding: 1rem; white-space: nowrap;">
+                        <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem; margin-bottom: 0.25rem;" 
+                                onclick="showSalesOrderDetail('${order.id}')">
+                            👁️ View
+                        </button>
+                        ${order.status === ORDER_STATUS.PENDING ? `
+                            <button class="btn-success" style="padding: 0.5rem 1rem; font-size: 0.9rem; margin-bottom: 0.25rem;" 
+                                    onclick="approveOrderQuick('${order.id}')">
+                                ✅ Approve
+                            </button>
+                            <button class="btn-danger" style="padding: 0.5rem 1rem; font-size: 0.9rem;" 
+                                    onclick="rejectSalesOrder('${order.id}')">
+                                ❌ Reject
+                            </button>
+                        ` : ''}
+                        ${order.status === ORDER_STATUS.CONFIRMED && order.invoiceId ? `
+                            <button class="btn-primary" style="padding: 0.5rem 1rem; font-size: 0.9rem;" 
+                                    onclick="viewInvoice('${order.invoiceId}')">
+                                📄 Invoice
+                            </button>
+                        ` : ''}
                     </td>
                 </tr>
             `;
@@ -418,38 +212,209 @@ async function loadRecentSales() {
         html += `
                 </tbody>
             </table>
+            </div>
         `;
 
-        recentSalesDiv.innerHTML = html;
+        ordersListDiv.innerHTML = html;
 
     } catch (error) {
-        console.error('Error loading recent sales:', error);
-        recentSalesDiv.innerHTML = `
+        console.error('Error loading orders:', error);
+        ordersListDiv.innerHTML = `
             <div style="text-align: center; padding: 2rem; color: #f44336;">
-                <p>Error loading sales history</p>
+                <p>Error loading orders. Please try again.</p>
             </div>
         `;
     }
 }
 
 /**
- * View invoice (placeholder - will
-  
-  
-      
-      
-          be implemented in InvoiceView)
+ * Filter orders by status
  */
-function viewInvoice(invoiceId) {
-    console.log('View invoice:', invoiceId);
-    // This will be implemented in InvoiceView.js
-    if (typeof showInvoiceDetail === 'function') {
-        showInvoiceDetail(invoiceId);
+function filterSalesOrdersByStatus(status) {
+    document.querySelectorAll('.tab-button').forEach(btn => btn.classList.remove('active'));
+    
+    const tabMap = {
+        'pending': 'tabPending',
+        'confirmed': 'tabConfirmed',
+        'rejected': 'tabRejected',
+        'all': 'tabAll'
+    };
+    
+    document.getElementById(tabMap[status]).classList.add('active');
+    loadSalesOrders(status);
+}
+
+/**
+ * Show order detail
+ */
+async function showSalesOrderDetail(orderId) {
+    const order = await getOrder(orderId);
+    
+    if (!order) {
+        showError('Order not found');
+        return;
+    }
+
+    const date = order.createdAt?.toDate?.() || new Date();
+    const statusColor = order.status === ORDER_STATUS.CONFIRMED ? '#4caf50' :
+                        order.status === ORDER_STATUS.PENDING ? '#f093fb' : '#f44336';
+
+    let itemsHTML = '';
+    order.items.forEach(item => {
+        itemsHTML += `
+            <tr>
+                <td style="padding: 0.75rem;">${item.productName}</td>
+                <td style="padding: 0.75rem;">${item.productSKU}</td>
+                <td style="padding: 0.75rem;">${item.quantity} ${item.productUnit}</td>
+                <td style="padding: 0.75rem;">${item.pricePerUnit.toFixed(2)}</td>
+                <td style="padding: 0.75rem;">${item.vatRate}%</td>
+                <td style="padding: 0.75rem;">${item.itemVAT.toFixed(2)}</td>
+                <td style="padding: 0.75rem;"><strong>${item.itemTotal.toFixed(2)}</strong></td>
+            </tr>
+        `;
+    });
+
+    const modalHTML = `
+        <div id="salesOrderDetailModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+                background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; z-index: 1000; overflow-y: auto;">
+            <div style="background: white; padding: 2.5rem; border-radius: 12px; max-width: 900px; width: 90%; margin: 2rem; max-height: 90vh; overflow-y: auto;">
+                
+                <div style="text-align: center; margin-bottom: 2rem; border-bottom: 3px solid #667eea; padding-bottom: 1rem;">
+                    <h1 style="color: #667eea; margin-bottom: 0.5rem;">ORDER DETAILS</h1>
+                    <p style="font-size: 1.2rem; color: #666;">${order.orderNumber}</p>
+                    <p>
+                        <span style="background: ${statusColor}; color: white; padding: 0.5rem 1rem; border-radius: 12px; font-size: 1rem;">
+                            ${order.status.toUpperCase()}
+                        </span>
+                    </p>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 0.5rem;">Buyer:</h3>
+                        <p><strong>${order.buyerName}</strong></p>
+                        <p style="color: #666;">${order.buyerRole}</p>
+                    </div>
+                    <div>
+                        <h3 style="color: #667eea; margin-bottom: 0.5rem;">Seller (You):</h3>
+                        <p><strong>${order.sellerName}</strong></p>
+                        <p style="color: #666;">${order.sellerRole}</p>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 2rem;">
+                    <p style="color: #666;">Order Date: <strong>${date.toLocaleDateString()} ${date.toLocaleTimeString()}</strong></p>
+                    ${order.confirmedAt ? `<p style="color: #666;">Approved: <strong>${order.confirmedAt.toDate().toLocaleDateString()}</strong></p>` : ''}
+                    ${order.rejectedAt ? `<p style="color: #666;">Rejected: <strong>${order.rejectedAt.toDate().toLocaleDateString()}</strong></p>` : ''}
+                </div>
+
+                <table style="width: 100%; margin: 2rem 0; border-collapse: collapse;">
+                    <thead>
+                        <tr style="background: #667eea;">
+                            <th style="color: white; padding: 1rem; text-align: left;">Product</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">SKU</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">Quantity</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">Price/Unit</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">VAT Rate</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">VAT</th>
+                            <th style="color: white; padding: 1rem; text-align: left;">Total</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${itemsHTML}
+                    </tbody>
+                </table>
+
+                <div style="text-align: right; border-top: 2px solid #e0e0e0; padding-top: 1rem; margin-top: 1rem;">
+                    <p style="font-size: 1.2rem; margin-bottom: 0.5rem;">
+                        Subtotal: ${order.subtotal.toFixed(2)}
+                    </p>
+                    <p style="font-size: 1.2rem; margin-bottom: 0.5rem; color: #f093fb;">
+                        <strong>VAT: ${order.totalVAT.toFixed(2)}</strong>
+                    </p>
+                    <p style="font-size: 1.5rem; color: #667eea;">
+                        <strong>Total Amount: ${order.totalAmount.toFixed(2)}</strong>
+                    </p>
+                </div>
+
+                ${order.rejectionReason ? `
+                <div style="margin-top: 2rem; padding: 1rem; background: #ffe0e0; border-radius: 8px;">
+                    <p style="color: #f44336;"><strong>Rejection Reason:</strong></p>
+                    <p>${order.rejectionReason}</p>
+                </div>
+                ` : ''}
+
+                <div style="display: flex; gap: 1rem; margin-top: 2rem; justify-content: center; flex-wrap: wrap;">
+                    ${order.status === ORDER_STATUS.PENDING ? `
+                        <button class="btn-success" style="padding: 0.75rem 1.5rem;" onclick="approveOrderFromModal('${order.id}')">
+                            ✅ Approve Order
+                        </button>
+                        <button class="btn-danger" style="padding: 0.75rem 1.5rem;" onclick="rejectOrderFromModal('${order.id}')">
+                            ❌ Reject Order
+                        </button>
+                    ` : ''}
+                    ${order.status === ORDER_STATUS.CONFIRMED && order.invoiceId ? `
+                        <button class="btn-primary" style="padding: 0.75rem 1.5rem;" onclick="closeSalesOrderDetail(); viewInvoice('${order.invoiceId}')">
+                            📄 View Invoice
+                        </button>
+                    ` : ''}
+                    <button class="btn-secondary" style="padding: 0.75rem 1.5rem;" onclick="closeSalesOrderDetail()">Close</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+}
+
+function closeSalesOrderDetail() {
+    const modal = document.getElementById('salesOrderDetailModal');
+    if (modal) modal.remove();
+}
+
+async function approveOrderQuick(orderId) {
+    if (!confirm('Approve this order? Stock will be transferred and invoice will be generated instantly.')) {
+        return;
+    }
+
+    showLoading();
+    const result = await confirmOrder(orderId);
+    hideLoading();
+
+    if (result.success) {
+        showSuccess('✅ Order approved! Stock transferred and invoice generated.');
+        await loadSalesOrders(currentSalesOrderStatusFilter);
     } else {
-        alert('Invoice viewer coming next! Invoice ID: ' + invoiceId);
+        showError(result.error);
     }
 }
 
-console.log('Sales view loaded');
+async function approveOrderFromModal(orderId) {
+    closeSalesOrderDetail();
+    await approveOrderQuick(orderId);
+}
 
-      
+async function rejectSalesOrder(orderId) {
+    const reason = prompt('Enter rejection reason (optional):');
+    if (reason === null) return;
+
+    showLoading();
+    const result = await rejectOrder(orderId, reason);
+    hideLoading();
+
+    if (result.success) {
+        showSuccess('Order rejected');
+        await loadSalesOrders(currentSalesOrderStatusFilter);
+    } else {
+        showError(result.error);
+    }
+}
+
+async function rejectOrderFromModal(orderId) {
+    closeSalesOrderDetail();
+    await rejectSalesOrder(orderId);
+}
+
+console.log('Sales/Orders view loaded');
+
+        
