@@ -225,32 +225,32 @@ function loadDashboard(role) {
             <div class="card">
                 <h3>📦 Products</h3>
                 <p>Create and manage your products</p>
-                <button class="btn-primary" onclick="alert('Products feature coming next!')">Manage Products</button>
+                <button class="btn-primary" onclick="loadProductsPage()">Manage Products</button>
             </div>
             <div class="card">
                 <h3>🏭 Raw Materials</h3>
                 <p>Track your raw materials inventory</p>
-                <button class="btn-primary" onclick="alert('Raw Materials feature coming next!')">View Raw Materials</button>
+                <button class="btn-primary" onclick="loadRawMaterialsPage()">View Raw Materials</button>
             </div>
             <div class="card">
                 <h3>🛒 Purchase Raw Materials</h3>
                 <p>Buy raw materials from suppliers</p>
-                <button class="btn-primary" onclick="alert('Purchase feature coming next!')">Make Purchase</button>
+                <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
             </div>
             <div class="card">
                 <h3>📊 Inventory</h3>
                 <p>Monitor finished goods stock</p>
-                <button class="btn-primary" onclick="alert('Inventory feature coming next!')">View Inventory</button>
+                <button class="btn-primary" onclick="loadInventoryPage()">View Inventory</button>
             </div>
             <div class="card">
                 <h3>🤝 Sales</h3>
                 <p>Sell to distributors, retailers, or buyers</p>
-                <button class="btn-success" onclick="alert('Sales feature coming next!')">Create Sale</button>
+                <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
             </div>
             <div class="card">
                 <h3>📄 Invoices</h3>
                 <p>View all invoices (sales & purchases)</p>
-                <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
+                <button class="btn-primary" onclick="loadInvoicesPage()">View Invoices</button>
             </div>
         `;
     }
@@ -261,22 +261,22 @@ function loadDashboard(role) {
             <div class="card">
                 <h3>📦 Inventory</h3>
                 <p>View and manage your stock</p>
-                <button class="btn-primary" onclick="alert('Inventory feature coming next!')">View Inventory</button>
+                <button class="btn-primary" onclick="loadInventoryPage()">View Inventory</button>
             </div>
             <div class="card">
                 <h3>🛒 Purchase</h3>
                 <p>Buy from manufacturers</p>
-                <button class="btn-primary" onclick="alert('Purchase feature coming next!')">Make Purchase</button>
+                <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
             </div>
             <div class="card">
                 <h3>🤝 Sales</h3>
                 <p>Sell to retailers or buyers</p>
-                <button class="btn-success" onclick="alert('Sales feature coming next!')">Create Sale</button>
+                <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
             </div>
             <div class="card">
                 <h3>📄 Invoices</h3>
                 <p>View generated invoices</p>
-                <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
+                <button class="btn-primary" onclick="loadInvoicesPage()">View Invoices</button>
             </div>
         `;
     }
@@ -287,27 +287,27 @@ function loadDashboard(role) {
             <div class="card">
                 <h3>📦 Inventory</h3>
                 <p>View and manage your stock</p>
-                <button class="btn-primary" onclick="alert('Inventory feature coming next!')">View Inventory</button>
+                <button class="btn-primary" onclick="loadInventoryPage()">View Inventory</button>
             </div>
             <div class="card">
                 <h3>🛒 Purchase</h3>
                 <p>Buy from manufacturers or distributors</p>
-                <button class="btn-primary" onclick="alert('Purchase feature coming next!')">Make Purchase</button>
+                <button class="btn-primary" onclick="loadPurchasePage()">Make Purchase</button>
             </div>
             <div class="card">
                 <h3>🤝 Sales</h3>
                 <p>Sell to buyers</p>
-                <button class="btn-success" onclick="alert('Sales feature coming next!')">Create Sale</button>
+                <button class="btn-success" onclick="loadSalesPage()">Create Sale</button>
             </div>
             <div class="card">
                 <h3>🛍️ Sell to Walk-in Customer</h3>
                 <p>Help customers without smartphone</p>
-                <button class="btn-success" onclick="alert('Walk-in Sale feature coming next!')">Quick Sale</button>
+                <button class="btn-success" onclick="loadWalkInSalePage()">Quick Sale</button>
             </div>
             <div class="card">
                 <h3>📄 Invoices</h3>
                 <p>View generated invoices</p>
-                <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
+                <button class="btn-primary" onclick="loadInvoicesPage()">View Invoices</button>
             </div>
         `;
     }
@@ -318,17 +318,17 @@ function loadDashboard(role) {
             <div class="card">
                 <h3>🛒 Make Purchase</h3>
                 <p>Buy products from sellers</p>
-                <button class="btn-success" onclick="alert('Purchase feature coming next!')">Browse Products</button>
+                <button class="btn-success" onclick="loadPurchasePage()">Browse Products</button>
             </div>
             <div class="card">
                 <h3>📄 My Invoices</h3>
                 <p>View your purchase invoices</p>
-                <button class="btn-primary" onclick="alert('Invoices feature coming next!')">View Invoices</button>
+                <button class="btn-primary" onclick="loadInvoicesPage()">View Invoices</button>
             </div>
             <div class="card">
                 <h3>📊 Purchase History</h3>
                 <p>Track all your purchases</p>
-                <button class="btn-primary" onclick="alert('History feature coming next!')">View History</button>
+                <button class="btn-primary" onclick="loadTransactionHistoryPage()">View History</button>
             </div>
         `;
     }
@@ -336,6 +336,119 @@ function loadDashboard(role) {
     dashboardHTML += `</div>`;
 
     mainContent.innerHTML = dashboardHTML;
+}
+
+// ========================================
+// PAGE NAVIGATION FUNCTIONS
+// ========================================
+
+/**
+ * Load Products Management Page
+ */
+function loadProductsPage() {
+    console.log('Loading Products Page...');
+    if (typeof showProductsPage === 'function') {
+        showProductsPage();
+    } else {
+        showComingSoon('Products Management');
+    }
+}
+
+/**
+ * Load Raw Materials Page
+ */
+function loadRawMaterialsPage() {
+    console.log('Loading Raw Materials Page...');
+    if (typeof showRawMaterialsPage === 'function') {
+        showRawMaterialsPage();
+    } else {
+        showComingSoon('Raw Materials Management');
+    }
+}
+
+/**
+ * Load Inventory Page
+ */
+function loadInventoryPage() {
+    console.log('Loading Inventory Page...');
+    if (typeof showInventoryPage === 'function') {
+        showInventoryPage();
+    } else {
+        showComingSoon('Inventory Management');
+    }
+}
+
+/**
+ * Load Purchase Page
+ */
+function loadPurchasePage() {
+    console.log('Loading Purchase Page...');
+    if (typeof showPurchasePage === 'function') {
+        showPurchasePage();
+    } else {
+        showComingSoon('Purchase System');
+    }
+}
+
+/**
+ * Load Sales Page
+ */
+function loadSalesPage() {
+    console.log('Loading Sales Page...');
+    if (typeof showSalesPage === 'function') {
+        showSalesPage();
+    } else {
+        showComingSoon('Sales System');
+    }
+}
+
+/**
+ * Load Walk-in Sale Page
+ */
+function loadWalkInSalePage() {
+    console.log('Loading Walk-in Sale Page...');
+    if (typeof showWalkInSalePage === 'function') {
+        showWalkInSalePage();
+    } else {
+        showComingSoon('Walk-in Customer Sale');
+    }
+}
+
+/**
+ * Load Invoices Page
+ */
+function loadInvoicesPage() {
+    console.log('Loading Invoices Page...');
+    if (typeof showInvoicesPage === 'function') {
+        showInvoicesPage();
+    } else {
+        showComingSoon('Invoice Management');
+    }
+}
+
+/**
+ * Load Transaction History Page
+ */
+function loadTransactionHistoryPage() {
+    console.log('Loading Transaction History Page...');
+    if (typeof showTransactionHistoryPage === 'function') {
+        showTransactionHistoryPage();
+    } else {
+        showComingSoon('Transaction History');
+    }
+}
+
+/**
+ * Show coming soon message with back to dashboard option
+ */
+function showComingSoon(featureName) {
+    mainContent.innerHTML = `
+        <div style="background: white; padding: 3rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); text-align: center;">
+            <h2 style="color: #667eea; margin-bottom: 1rem;">🚧 ${featureName}</h2>
+            <p style="color: #666; font-size: 1.1rem; margin-bottom: 2rem;">This feature is coming soon!</p>
+            <button class="btn-primary" onclick="loadDashboard('${currentUserData.role}')">Back to Dashboard</button>
+        </div>
+    `;
 }
 
 /**
@@ -397,5 +510,3 @@ function showSuccess(message) {
 }
 
 console.log('App.js loaded successfully');
-
-    
