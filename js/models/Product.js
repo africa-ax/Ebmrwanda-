@@ -23,6 +23,15 @@ async function createProduct(productData) {
             };
         }
 
+        // Validate VAT rate
+        const vatRate = productData.vatRate !== undefined ? productData.vatRate : 0;
+        if (vatRate < 0 || vatRate > 100) {
+            return {
+                success: false,
+                error: 'VAT rate must be between 0 and 100'
+            };
+        }
+
         // Validate product name length
         if (productData.name.length > VALIDATION.MAX_PRODUCT_NAME_LENGTH) {
             return {
@@ -63,6 +72,7 @@ async function createProduct(productData) {
             sku: sku,
             unit: productData.unit,
             description: productData.description?.trim() || '',
+            vatRate: vatRate, // VAT percentage (e.g., 18 for 18%)
             manufacturerId: currentUser.uid,
             manufacturerName: currentUserData.name,
             createdAt: getTimestamp(),
@@ -212,6 +222,16 @@ async function updateProduct(productId, updates) {
             allowedUpdates.unit = updates.unit;
         }
 
+        if (updates.vatRate !== undefined) {
+            if (updates.vatRate < 0 || updates.vatRate > 100) {
+                return {
+                    success: false,
+                    error: 'VAT rate must be between 0 and 100'
+                };
+            }
+            allowedUpdates.vatRate = updates.vatRate;
+        }
+
         // Add timestamp
         allowedUpdates.updatedAt = getTimestamp();
 
@@ -334,5 +354,4 @@ function generateSKU(productName) {
 }
 
 console.log('Product model loaded');
-
-              
+        
