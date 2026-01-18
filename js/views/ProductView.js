@@ -22,6 +22,7 @@ async function showProductsPage() {
                 <h2 style="color: #667eea;">📦 My Products</h2>
                 <div>
                     <button class="btn-primary" onclick="showCreateProductForm()">+ Create Product</button>
+                    <button class="btn-secondary" onclick="loadProductsList()" style="margin: 0 0.5rem;">🔄 Refresh</button>
                     <button class="btn-secondary" onclick="loadDashboard('${currentUserData.role}')">Back</button>
                 </div>
             </div>
@@ -93,6 +94,14 @@ async function showProductsPage() {
 async function loadProductsList() {
     const productsListDiv = document.getElementById('productsList');
     
+    // Show loading spinner
+    productsListDiv.innerHTML = `
+        <div style="text-align: center; padding: 2rem;">
+            <div class="spinner"></div>
+            <p>Loading your products...</p>
+        </div>
+    `;
+    
     try {
         const products = await getMyProducts();
 
@@ -149,12 +158,15 @@ async function loadProductsList() {
         `;
 
         productsListDiv.innerHTML = html;
+        
+        console.log(`Loaded ${products.length} products successfully`);
 
     } catch (error) {
         console.error('Error loading products:', error);
         productsListDiv.innerHTML = `
             <div style="text-align: center; padding: 2rem; color: #f44336;">
-                <p>Error loading products. Please try again.</p>
+                <p>Error loading products: ${error.message}</p>
+                <button class="btn-primary" onclick="loadProductsList()" style="margin-top: 1rem;">Try Again</button>
             </div>
         `;
     }
@@ -212,13 +224,13 @@ async function handleCreateProduct(event) {
         successElement.textContent = 'Product created successfully!';
         document.getElementById('productForm').reset();
         
-        // Reload products list
+        // Immediately reload products list to show new product
         await loadProductsList();
         
-        // Hide form after 2 seconds
+        // Hide form after 1 second
         setTimeout(() => {
             hideCreateProductForm();
-        }, 2000);
+        }, 1000);
     } else {
         errorElement.textContent = result.error;
     }
@@ -361,4 +373,3 @@ function filterProducts() {
 }
 
 console.log('Product view loaded');
-                                    
