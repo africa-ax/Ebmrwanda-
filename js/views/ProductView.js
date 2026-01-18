@@ -215,16 +215,29 @@ async function handleCreateProduct(event) {
     submitBtn.textContent = 'Creating...';
     submitBtn.disabled = true;
 
+    console.log('=== CREATING PRODUCT ===');
+    console.log('Product Data:', productData);
+    console.log('User:', firebase.auth().currentUser?.uid);
+    console.log('User Role:', currentUserData?.role);
+
     const result = await createProduct(productData);
+
+    console.log('Create Result:', result);
 
     submitBtn.textContent = originalText;
     submitBtn.disabled = false;
 
     if (result.success) {
-        successElement.textContent = 'Product created successfully!';
+        successElement.textContent = '✅ Product created successfully!';
+        successElement.style.display = 'block';
+        errorElement.style.display = 'none';
+        
+        console.log('Product created with ID:', result.productId);
+        
         document.getElementById('productForm').reset();
         
         // Immediately reload products list to show new product
+        console.log('Reloading products list...');
         await loadProductsList();
         
         // Hide form after 1 second
@@ -232,7 +245,10 @@ async function handleCreateProduct(event) {
             hideCreateProductForm();
         }, 1000);
     } else {
-        errorElement.textContent = result.error;
+        errorElement.textContent = '❌ ' + result.error;
+        errorElement.style.display = 'block';
+        successElement.style.display = 'none';
+        console.error('Product creation failed:', result.error);
     }
 }
 
