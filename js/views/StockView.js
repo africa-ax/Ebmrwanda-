@@ -44,6 +44,9 @@ async function showInventoryPage() {
                             <select id="stockProduct" required>
                                 <option value="">Select Product</option>
                             </select>
+                            <small style="color: #999;">
+                                <span id="productLoadingStatus">Loading products...</span>
+                            </small>
                         </div>
                         <div class="form-group">
                             <label for="stockQuantity">Quantity *</label>
@@ -85,12 +88,12 @@ async function showInventoryPage() {
         </div>
     `;
 
-    // Load inventory
+    // Load inventory first
     await loadInventoryList();
     
-    // Load products for stock form (manufacturers only)
+    // Load products for stock form (manufacturers only) - this will happen in background
     if (currentUserData.role === ROLES.MANUFACTURER) {
-        await loadProductsForStockForm();
+        loadProductsForStockForm();
     }
 }
 
@@ -205,23 +208,51 @@ async function loadInventoryList() {
  * Load products for stock form dropdown
  */
 async function loadProductsForStockForm() {
-    const products = await getMyProducts();
     const selectElement = document.getElementById('stockProduct');
+    const statusElement = document.getElementById('productLoadingStatus');
     
     if (!selectElement) return;
 
-    selectElement.innerHTML = '<option value="">Select Product</option>';
-    
-    products.forEach(product => {
-        selectElement.innerHTML += `<option value="${product.id}">${product.name} (${product.sku})</option>`;
-    });
+    try {
+        statusElement.textContent = 'Loading your products...';
+        statusElement.style.color = '#667eea';
+        
+        const products = await getMyProducts();
+        
+        selectElement.innerHTML = '<option value="">Select Product</option>';
+        
+        if (products.length === 0) {
+            selectElement.innerHTML = '<option value="">No products created yet</option>';
+            statusElement.textContent = 'Create a product first!';
+            statusElement.style.color = '#f44336';
+            return;
+        }
+        
+        products.forEach(product => {
+            selectElement.innerHTML += `<option value="${product.id}">${product.name} (${product.sku})</option>`;
+        });
+        
+        statusElement.textContent = `${products.length} product(s) available`;
+        statusElement.style.color = '#4caf50';
+        
+    } catch (error) {
+        console.error('Error loading products:', error);
+        selectElement.innerHTML = '<option value="">Error loading products</option>';
+        statusElement.textContent = 'Error loading products. Refresh page.';
+        statusElement.style.color = '#f44336';
+    }
 }
 
 /**
  * Show add stock form
  */
-function showAddStockForm() {
-    document.getElementById('addStockForm').style.display = 'block';
+async function showAddStockForm() {
+    const formElement = document.getElementById('addStockForm');
+    formElement.style.display = 'block';
+    
+    // Reload products to get latest list
+    await loadProductsForStockForm();
+    
     document.getElementById('stockProduct').focus();
 }
 
@@ -270,11 +301,13 @@ async function handleAddStock(event) {
         successElement.textContent = `Stock ${result.action} successfully!`;
         document.getElementById('stockForm').reset();
         
+        // Immediately reload inventory and products
         await loadInventoryList();
+        await loadProductsForStockForm();
         
         setTimeout(() => {
             hideAddStockForm();
-        }, 2000);
+        }, 1000);
     } else {
         errorElement.textContent = result.error;
     }
@@ -394,7 +427,3 @@ function filterInventory() {
 }
 
 console.log('Inventory view loaded');
-
-
-
-
