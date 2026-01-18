@@ -221,11 +221,16 @@ async function getOwnerStock(ownerId, type = null) {
  * @returns {Promise<Array>} Array of stock items
  */
 async function getMyStock(type = null) {
-    if (!currentUser) {
+    // Get the REAL Firebase authenticated user
+    const authUser = firebase.auth().currentUser;
+    
+    if (!authUser) {
+        console.warn('No authenticated user for stock');
         return [];
     }
 
-    return await getOwnerStock(currentUser.uid, type);
+    console.log('Loading stock for user:', authUser.uid);
+    return await getOwnerStock(authUser.uid, type); // USE REAL FIREBASE UID
 }
 
 /**
@@ -376,4 +381,3 @@ async function getProductStockAcrossOwners(productId) {
 }
 
 console.log('Stock model loaded - GOLDEN RULE enforced');
-              
