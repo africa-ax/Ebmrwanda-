@@ -4,13 +4,26 @@
  * Show Products Management Page
  */
 async function showProductsPage() {
-    // Check if user is manufacturer
-    if (!currentUserData || currentUserData.role !== ROLES.MANUFACTURER) {
+    // FIX: Retry mechanism if currentUserData isn't synced yet
+    if (!currentUserData) {
         mainContent.innerHTML = `
             <div style="background: white; padding: 2rem; border-radius: 12px; text-align: center;">
-                <h2 style="color: #f44336;">Access Denied</h2>
-                <p>Only manufacturers can manage products.</p>
-                <button class="btn-primary" onclick="loadDashboard('${currentUserData?.role}')">Back to Dashboard</button>
+                <h3 style="color: #ff9800;">⏳ Syncing User Profile...</h3>
+                <div class="spinner" style="margin: 1rem auto;"></div>
+                <p>Please wait while we verify your permissions.</p>
+            </div>
+        `;
+        // Check again in 500ms
+        setTimeout(showProductsPage, 500);
+        return;
+    }
+
+    if (currentUserData.role !== ROLES.MANUFACTURER) {
+        mainContent.innerHTML = `
+            <div style="background: white; padding: 2rem; border-radius: 12px; text-align: center;">
+                <h2 style="color: #f44336;">🚫 Access Denied</h2>
+                <p>Only Manufacturers can manage the product master list.</p>
+                <button class="btn-primary" onclick="loadDashboard('${currentUserData.role}')">Back to Dashboard</button>
             </div>
         `;
         return;
@@ -18,23 +31,22 @@ async function showProductsPage() {
 
     mainContent.innerHTML = `
         <div style="background: white; padding: 2rem; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem;">
-                <h2 style="color: #667eea;">📦 My Products</h2>
-                <div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h2 style="color: #667eea; margin: 0;">📦 My Products</h2>
+                <div style="display: flex; gap: 0.5rem;">
                     <button class="btn-primary" onclick="showCreateProductForm()">+ Create Product</button>
-                    <button class="btn-secondary" onclick="loadProductsList()" style="margin: 0 0.5rem;">🔄 Refresh</button>
+                    <button class="btn-secondary" onclick="loadProductsList()">🔄 Refresh</button>
                     <button class="btn-secondary" onclick="loadDashboard('${currentUserData.role}')">Back</button>
                 </div>
             </div>
 
-            <!-- Create Product Form (hidden by default) -->
-            <div id="createProductForm" style="display: none; background: #f5f5f5; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                <h3 style="margin-bottom: 1rem;">Create New Product</h3>
+            <div id="createProductForm" style="display: none; background: #f5f5f5; padding: 1.5rem; border-radius: 8px; margin-bottom: 1.5rem;">
+                <h3 style="margin-bottom: 1rem;">➕ Create New Product</h3>
                 <form id="productForm" onsubmit="handleCreateProduct(event)">
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="form-group">
                             <label for="productName">Product Name *</label>
-                            <input type="text" id="productName" required maxlength="100" placeholder="e.g., Banana Flour">
+                            <input type="text" id="productName" required placeholder="e.g., Banana Flour">
                         </div>
                         <div class="form-group">
                             <label for="productUnit">Unit *</label>
@@ -46,45 +58,39 @@ async function showProductsPage() {
                     </div>
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                         <div class="form-group">
-                            <label for="productSKU">SKU (Optional - Auto-generated if empty)</label>
+                            <label for="productSKU">SKU (Optional)</label>
                             <input type="text" id="productSKU" placeholder="e.g., BAN-001">
                         </div>
                         <div class="form-group">
                             <label for="productVAT">VAT Rate (%) *</label>
-                            <input type="number" id="productVAT" min="0" max="100" step="0.01" value="0" required placeholder="e.g., 18">
-                            <small style="color: #999;">This VAT rate will apply across all transactions</small>
+                            <input type="number" id="productVAT" min="0" max="100" step="0.01" value="0" required>
                         </div>
                     </div>
                     <div class="form-group">
-                        <label for="productDescription">Description (Optional)</label>
-                        <textarea id="productDescription" rows="3" maxlength="500" placeholder="Product description..."></textarea>
+                        <label for="productDescription">Description</label>
+                        <textarea id="productDescription" rows="2" placeholder="Brief description..."></textarea>
                     </div>
                     <div style="display: flex; gap: 1rem;">
-                        <button type="submit" class="btn-success">Create Product</button>
+                        <button type="submit" class="btn-success">Save Product</button>
                         <button type="button" class="btn-secondary" onclick="hideCreateProductForm()">Cancel</button>
                     </div>
                     <p id="productFormError" class="error-message"></p>
-                    <p id="productFormSuccess" class="success-message"></p>
                 </form>
             </div>
 
-            <!-- Search Bar -->
-            <div class="form-group" style="margin-bottom: 1.5rem;">
-                <input type="text" id="productSearch" placeholder="Search products by name or SKU..." 
-                       onkeyup="filterProducts()" style="width: 100%;">
+            <div class="form-group" style="margin-bottom: 1rem;">
+                <input type="text" id="productSearch" placeholder="🔍 Search products..." onkeyup="filterProducts()" style="width: 100%;">
             </div>
 
-            <!-- Products List -->
             <div id="productsList">
                 <div style="text-align: center; padding: 2rem;">
                     <div class="spinner"></div>
-                    <p>Loading products...</p>
+                    <p>Loading your products...</p>
                 </div>
             </div>
         </div>
     `;
 
-    // Load products
     await loadProductsList();
 }
 
@@ -94,298 +100,103 @@ async function showProductsPage() {
 async function loadProductsList() {
     const productsListDiv = document.getElementById('productsList');
     
-    // Show loading spinner
-    productsListDiv.innerHTML = `
-        <div style="text-align: center; padding: 2rem;">
-            <div class="spinner"></div>
-            <p>Loading your products...</p>
-        </div>
-    `;
-    
     try {
         const products = await getMyProducts();
 
         if (products.length === 0) {
             productsListDiv.innerHTML = `
-                <div style="text-align: center; padding: 3rem; color: #999;">
-                    <p style="font-size: 1.2rem;">No products yet</p>
-                    <p>Click "Create Product" to add your first product</p>
+                <div style="text-align: center; padding: 3rem; color: #999; border: 2px dashed #eee; border-radius: 8px;">
+                    <p style="font-size: 1.2rem;">No products found.</p>
+                    <button class="btn-primary" onclick="showCreateProductForm()" style="margin-top: 1rem;">Create Your First Product</button>
                 </div>
             `;
             return;
         }
 
         let html = `
-            <table id="productsTable">
+            <table id="productsTable" style="width: 100%; border-collapse: collapse;">
                 <thead>
-                    <tr>
-                        <th>Product Name</th>
-                        <th>SKU</th>
-                        <th>Unit</th>
-                        <th>VAT Rate</th>
-                        <th>Description</th>
-                        <th>Created</th>
-                        <th>Actions</th>
+                    <tr style="background: #f8f9fa; text-align: left;">
+                        <th style="padding: 12px; border-bottom: 2px solid #eee;">Name</th>
+                        <th style="padding: 12px; border-bottom: 2px solid #eee;">SKU</th>
+                        <th style="padding: 12px; border-bottom: 2px solid #eee;">Unit</th>
+                        <th style="padding: 12px; border-bottom: 2px solid #eee;">VAT</th>
+                        <th style="padding: 12px; border-bottom: 2px solid #eee;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
         `;
 
         products.forEach(product => {
-            const createdDate = product.createdAt?.toDate?.() || new Date();
-            const vatRate = product.vatRate || 0;
             html += `
-                <tr data-product-name="${product.name.toLowerCase()}" data-product-sku="${product.sku.toLowerCase()}">
-                    <td><strong>${product.name}</strong></td>
-                    <td>${product.sku}</td>
-                    <td>${product.unit}</td>
-                    <td>${vatRate}%</td>
-                    <td>${product.description || '-'}</td>
-                    <td>${createdDate.toLocaleDateString()}</td>
-                    <td>
-                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" 
-                                onclick="showEditProductForm('${product.id}')">Edit</button>
-                        <button class="btn-danger" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" 
-                                onclick="handleDeleteProduct('${product.id}', '${product.name}')">Delete</button>
+                <tr data-name="${product.name.toLowerCase()}" data-sku="${product.sku.toLowerCase()}" style="border-bottom: 1px solid #eee;">
+                    <td style="padding: 12px;"><strong>${product.name}</strong></td>
+                    <td style="padding: 12px;"><code>${product.sku}</code></td>
+                    <td style="padding: 12px;">${product.unit}</td>
+                    <td style="padding: 12px;">${product.vatRate || 0}%</td>
+                    <td style="padding: 12px;">
+                        <button class="btn-secondary" style="padding: 5px 10px;" onclick="showEditProductForm('${product.id}')">Edit</button>
+                        <button class="btn-danger" style="padding: 5px 10px;" onclick="handleDeleteProduct('${product.id}', '${product.name}')">Delete</button>
                     </td>
                 </tr>
             `;
         });
 
-        html += `
-                </tbody>
-            </table>
-        `;
-
+        html += `</tbody></table>`;
         productsListDiv.innerHTML = html;
-        
-        console.log(`Loaded ${products.length} products successfully`);
 
     } catch (error) {
-        console.error('Error loading products:', error);
-        productsListDiv.innerHTML = `
-            <div style="text-align: center; padding: 2rem; color: #f44336;">
-                <p>Error loading products: ${error.message}</p>
-                <button class="btn-primary" onclick="loadProductsList()" style="margin-top: 1rem;">Try Again</button>
-            </div>
-        `;
+        productsListDiv.innerHTML = `<p class="error-message">Error loading products: ${error.message}</p>`;
     }
 }
 
-/**
- * Show create product form
- */
-function showCreateProductForm() {
-    document.getElementById('createProductForm').style.display = 'block';
-    document.getElementById('productName').focus();
-}
-
-/**
- * Hide create product form
- */
-function hideCreateProductForm() {
-    document.getElementById('createProductForm').style.display = 'none';
-    document.getElementById('productForm').reset();
-    document.getElementById('productFormError').textContent = '';
-    document.getElementById('productFormSuccess').textContent = '';
-}
-
-/**
- * Handle create product form submission
- */
 async function handleCreateProduct(event) {
     event.preventDefault();
-
-    const errorElement = document.getElementById('productFormError');
-    const successElement = document.getElementById('productFormSuccess');
-    errorElement.textContent = '';
-    successElement.textContent = '';
+    const btn = event.target.querySelector('button[type="submit"]');
+    btn.disabled = true;
+    btn.textContent = 'Saving...';
 
     const productData = {
-        name: document.getElementById('productName').value.trim(),
+        name: document.getElementById('productName').value,
         unit: document.getElementById('productUnit').value,
-        sku: document.getElementById('productSKU').value.trim() || undefined,
-        description: document.getElementById('productDescription').value.trim(),
+        sku: document.getElementById('productSKU').value,
+        description: document.getElementById('productDescription').value,
         vatRate: parseFloat(document.getElementById('productVAT').value) || 0
     };
 
-    // Show loading
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Creating...';
-    submitBtn.disabled = true;
-
-    console.log('=== CREATING PRODUCT ===');
-    console.log('Product Data:', productData);
-    console.log('User:', firebase.auth().currentUser?.uid);
-    console.log('User Role:', currentUserData?.role);
-
     const result = await createProduct(productData);
 
-    console.log('Create Result:', result);
-
-    submitBtn.textContent = originalText;
-    submitBtn.disabled = false;
-
     if (result.success) {
-        successElement.textContent = '✅ Product created successfully!';
-        successElement.style.display = 'block';
-        errorElement.style.display = 'none';
-        
-        console.log('Product created with ID:', result.productId);
-        
-        document.getElementById('productForm').reset();
-        
-        // Immediately reload products list to show new product
-        console.log('Reloading products list...');
-        await loadProductsList();
-        
-        // Hide form after 1 second
-        setTimeout(() => {
-            hideCreateProductForm();
-        }, 1000);
-    } else {
-        errorElement.textContent = '❌ ' + result.error;
-        errorElement.style.display = 'block';
-        successElement.style.display = 'none';
-        console.error('Product creation failed:', result.error);
-    }
-}
-
-/**
- * Show edit product form
- */
-async function showEditProductForm(productId) {
-    const product = await getProduct(productId);
-    
-    if (!product) {
-        alert('Product not found');
-        return;
-    }
-
-    const modalHTML = `
-        <div id="editProductModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-            <div style="background: white; padding: 2rem; border-radius: 12px; max-width: 500px; width: 90%;">
-                <h3 style="margin-bottom: 1rem;">Edit Product</h3>
-                <form id="editProductForm" onsubmit="handleEditProduct(event, '${productId}')">
-                    <div class="form-group">
-                        <label for="editProductName">Product Name *</label>
-                        <input type="text" id="editProductName" value="${product.name}" required maxlength="100">
-                    </div>
-                    <div class="form-group">
-                        <label for="editProductUnit">Unit *</label>
-                        <select id="editProductUnit" required>
-                            ${UNITS.map(unit => `<option value="${unit}" ${unit === product.unit ? 'selected' : ''}>${unit}</option>`).join('')}
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="editProductVAT">VAT Rate (%) *</label>
-                        <input type="number" id="editProductVAT" value="${product.vatRate || 0}" min="0" max="100" step="0.01" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="editProductDescription">Description</label>
-                        <textarea id="editProductDescription" rows="3" maxlength="500">${product.description || ''}</textarea>
-                    </div>
-                    <p style="color: #999; font-size: 0.9rem; margin-bottom: 1rem;">SKU: ${product.sku} (cannot be changed)</p>
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" class="btn-success">Update Product</button>
-                        <button type="button" class="btn-secondary" onclick="closeEditProductModal()">Cancel</button>
-                    </div>
-                    <p id="editProductError" class="error-message"></p>
-                </form>
-            </div>
-        </div>
-    `;
-
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
-}
-
-/**
- * Handle edit product form submission
- */
-async function handleEditProduct(event, productId) {
-    event.preventDefault();
-
-    const errorElement = document.getElementById('editProductError');
-    errorElement.textContent = '';
-
-    const updates = {
-        name: document.getElementById('editProductName').value.trim(),
-        unit: document.getElementById('editProductUnit').value,
-        description: document.getElementById('editProductDescription').value.trim(),
-        vatRate: parseFloat(document.getElementById('editProductVAT').value) || 0
-    };
-
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    const originalText = submitBtn.textContent;
-    submitBtn.textContent = 'Updating...';
-    submitBtn.disabled = true;
-
-    const result = await updateProduct(productId, updates);
-
-    if (result.success) {
-        closeEditProductModal();
-        await loadProductsList();
-        showSuccess('Product updated successfully!');
-    } else {
-        submitBtn.textContent = originalText;
-        submitBtn.disabled = false;
-        errorElement.textContent = result.error;
-    }
-}
-
-/**
- * Close edit product modal
- */
-function closeEditProductModal() {
-    const modal = document.getElementById('editProductModal');
-    if (modal) {
-        modal.remove();
-    }
-}
-
-/**
- * Handle delete product
- */
-async function handleDeleteProduct(productId, productName) {
-    if (!confirm(`Are you sure you want to delete "${productName}"?\n\nThis cannot be undone and will fail if stock exists for this product.`)) {
-        return;
-    }
-
-    showLoading();
-    const result = await deleteProduct(productId);
-    hideLoading();
-
-    if (result.success) {
-        showSuccess('Product deleted successfully');
+        hideCreateProductForm();
         await loadProductsList();
     } else {
-        showError(result.error);
+        document.getElementById('productFormError').textContent = result.error;
+        btn.disabled = false;
+        btn.textContent = 'Save Product';
     }
 }
 
-/**
- * Filter products by search term
- */
+function showCreateProductForm() { document.getElementById('createProductForm').style.display = 'block'; }
+function hideCreateProductForm() { 
+    document.getElementById('createProductForm').style.display = 'none';
+    document.getElementById('productForm').reset();
+}
+
 function filterProducts() {
-    const searchTerm = document.getElementById('productSearch').value.toLowerCase();
-    const table = document.getElementById('productsTable');
-    
-    if (!table) return;
-
-    const rows = table.querySelectorAll('tbody tr');
-    
+    const term = document.getElementById('productSearch').value.toLowerCase();
+    const rows = document.querySelectorAll('#productsTable tbody tr');
     rows.forEach(row => {
-        const name = row.getAttribute('data-product-name');
-        const sku = row.getAttribute('data-product-sku');
-        
-        if (name.includes(searchTerm) || sku.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        const match = row.dataset.name.includes(term) || row.dataset.sku.includes(term);
+        row.style.display = match ? '' : 'none';
     });
 }
 
-console.log('Product view loaded');
+async function handleDeleteProduct(id, name) {
+    if (confirm(`Delete "${name}"?`)) {
+        const result = await deleteProduct(id);
+        if (result.success) await loadProductsList();
+        else alert(result.error);
+    }
+}
+
+console.log('✅ Product View Loaded');
