@@ -1,3 +1,5 @@
+window.getAllProducts = getAllProducts;
+
 // Product Model - Handles all product-related operations
 
 async function createProduct(productData) {
