@@ -11,14 +11,28 @@ async function createProduct(productData) {
         const authUser = firebase.auth().currentUser;
         
         if (!authUser) {
+            console.error('❌ createProduct: No authenticated user');
             return {
                 success: false,
                 error: 'You must be logged in to create products'
             };
         }
 
+        console.log('📝 createProduct called - User UID:', authUser.uid);
+        console.log('📝 Product data:', productData);
+        console.log('📝 currentUserData:', currentUserData);
+
         // Verify user is a manufacturer using currentUserData (for role check only)
-        if (!currentUserData || currentUserData.role !== ROLES.MANUFACTURER) {
+        if (!currentUserData) {
+            console.error('❌ createProduct: currentUserData is null/undefined');
+            return {
+                success: false,
+                error: 'User data not loaded. Please refresh the page.'
+            };
+        }
+
+        if (currentUserData.role !== ROLES.MANUFACTURER) {
+            console.error('❌ createProduct: User is not manufacturer. Role:', currentUserData.role);
             return {
                 success: false,
                 error: ERROR_MESSAGES.UNAUTHORIZED + ': Only manufacturers can create products'
@@ -60,6 +74,7 @@ async function createProduct(productData) {
 
         // Generate unique SKU if not provided
         const sku = productData.sku || generateSKU(productData.name);
+        console.log('📝 Generated SKU:', sku);
 
         // Check if SKU already exists
         const existingSKU = await db.collection(COLLECTIONS.PRODUCTS)
@@ -90,10 +105,18 @@ async function createProduct(productData) {
             updatedAt: getTimestamp()
         };
 
+        console.log('📝 Saving product to Firestore:', product);
+
         await productRef.set(product);
 
-        console.log('Product created successfully:', product.id);
-        console.log('Manufacturer UID:', authUser.uid); // Debug log
+        // Verify the product was saved
+        const verifyDoc = await productRef.get();
+        console.log('✅ Product created successfully!');
+        console.log('✅ Product ID:', product.id);
+        console.log('✅ Manufacturer UID:', authUser.uid);
+        console.log('✅ Saved document exists:', verifyDoc.exists);
+        console.log('✅ Actual saved data:', verifyDoc.data());
+
         return {
             success: true,
             productId: product.id,
@@ -101,7 +124,7 @@ async function createProduct(productData) {
         };
 
     } catch (error) {
-        console.error('Error creating product:', error);
+        console.error('❌ Error creating product:', error);
         return {
             success: false,
             error: error.message || 'Failed to create product'
@@ -119,6 +142,7 @@ async function getProduct(productId) {
         const productDoc = await db.collection(COLLECTIONS.PRODUCTS).doc(productId).get();
         
         if (!productDoc.exists) {
+            console.log(`Product ${productId} not found`);
             return null;
         }
 
@@ -140,6 +164,7 @@ async function getProduct(productId) {
 async function getAllProducts(manufacturerId = null) {
     try {
         let query = db.collection(COLLECTIONS.PRODUCTS);
+        console.log(`🔄 getAllProducts called - manufacturerId filter: ${manufacturerId}`);
 
         // Filter by manufacturer if provided
         if (manufacturerId) {
@@ -156,9 +181,10 @@ async function getAllProducts(manufacturerId = null) {
             });
         });
 
+        console.log(`✅ getAllProducts found ${products.length} products`);
         return products;
     } catch (error) {
-        console.error('Error getting products:', error);
+        console.error('❌ Error getting products:', error);
         return [];
     }
 }
@@ -168,26 +194,100 @@ async function getAllProducts(manufacturerId = null) {
  * @returns {Promise<Array>} Array of user's products
  */
 async function getMyProducts() {
+    console.log('=== getMyProducts() called ===');
+    
     // Get the REAL Firebase authenticated user
     const authUser = firebase.auth().currentUser;
     
+    console.log('📊 Firebase Auth User:', {
+        exists: !!authUser,
+        uid: authUser?.uid,
+        email: authUser?.email
+    });
+    
     if (!authUser) {
-        console.warn('No authenticated user');
+        console.warn('❌ No authenticated user found in getMyProducts()');
         return [];
     }
 
+    console.log('📊 currentUserData:', {
+        exists: !!currentUserData,
+        id: currentUserData?.id,
+        uid: currentUserData?.uid,
+        role: currentUserData?.role,
+        name: currentUserData?.name
+    });
+
     if (!currentUserData) {
-        console.warn('No user data loaded');
+        console.warn('❌ No user data loaded');
         return [];
     }
 
     if (currentUserData.role !== ROLES.MANUFACTURER) {
-        console.warn('Only manufacturers can have their own products');
+        console.warn('❌ User is not manufacturer. Role:', currentUserData.role);
         return [];
     }
 
-    console.log('Loading products for manufacturer:', authUser.uid);
-    return await getAllProducts(authUser.uid); // USE REAL FIREBASE UID
+    console.log('✅ Loading products for manufacturer UID:', authUser.uid);
+    
+    // Try to get products using getAllProducts
+    try {
+        const products = await getAllProducts(authUser.uid);
+        console.log('✅ Found products:', products.length);
+        
+        // Log each product to verify manufacturerId
+        products.forEach((product, index) => {
+            console.log(`📦 Product ${index + 1}:`, {
+                id: product.id,
+                name: product.name,
+                manufacturerId: product.manufacturerId,
+                matchesCurrentUser: product.manufacturerId === authUser.uid
+            });
+        });
+        
+        return products;
+    } catch (error) {
+        console.error('❌ Error in getMyProducts:', error);
+        
+        // Try fallback method
+        console.log('🔄 Trying fallback query...');
+        return await getMyProductsDirect();
+    }
+}
+
+/**
+ * Direct query for user's products (fallback method)
+ */
+async function getMyProductsDirect() {
+    const authUser = firebase.auth().currentUser;
+    if (!authUser) {
+        console.warn('No auth user for direct query');
+        return [];
+    }
+    
+    try {
+        console.log('🔄 Running direct Firestore query for UID:', authUser.uid);
+        const snapshot = await db.collection(COLLECTIONS.PRODUCTS)
+            .where('manufacturerId', '==', authUser.uid)
+            .get();
+        
+        console.log(`✅ Direct query found ${snapshot.size} products`);
+        
+        const products = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        })).sort((a, b) => {
+            // Sort by createdAt descending
+            const timeA = a.createdAt?.seconds || 0;
+            const timeB = b.createdAt?.seconds || 0;
+            return timeB - timeA;
+        });
+        
+        return products;
+    } catch (error) {
+        console.error('❌ Direct query error:', error);
+        return [];
+    }
 }
 
 /**
@@ -269,7 +369,7 @@ async function updateProduct(productId, updates) {
         // Update product
         await db.collection(COLLECTIONS.PRODUCTS).doc(productId).update(allowedUpdates);
 
-        console.log('Product updated successfully:', productId);
+        console.log('✅ Product updated successfully:', productId);
         return {
             success: true,
             productId: productId
@@ -335,7 +435,7 @@ async function deleteProduct(productId) {
         // Delete product
         await db.collection(COLLECTIONS.PRODUCTS).doc(productId).delete();
 
-        console.log('Product deleted successfully:', productId);
+        console.log('✅ Product deleted successfully:', productId);
         return {
             success: true,
             productId: productId
@@ -394,5 +494,38 @@ function generateSKU(productName) {
     return `${prefix}-${timestamp}-${random}`;
 }
 
-console.log('Product model loaded');
+/**
+ * Debug function to test product retrieval
+ */
+window.debugProducts = async function() {
+    console.clear();
+    console.log('=== DEBUG PRODUCTS ===');
+    
+    const authUser = firebase.auth().currentUser;
+    console.log('1. Firebase User:', authUser?.uid);
+    console.log('2. currentUserData:', currentUserData);
+    
+    if (authUser) {
+        console.log('3. Direct Firestore query for products...');
+        const snapshot = await db.collection(COLLECTIONS.PRODUCTS).get();
+        console.log(`   Total products in database: ${snapshot.size}`);
+        
+        console.log('4. Products for current user:');
+        const mySnapshot = await db.collection(COLLECTIONS.PRODUCTS)
+            .where('manufacturerId', '==', authUser.uid)
+            .get();
+        console.log(`   Found ${mySnapshot.size} products for UID: ${authUser.uid}`);
+        
+        mySnapshot.forEach(doc => {
+            console.log('   -', doc.data());
+        });
+        
+        console.log('5. Testing getMyProducts()...');
+        const products = await getMyProducts();
+        console.log(`   getMyProducts() returned: ${products.length} products`);
+    }
+};
+
+console.log('✅ Product model loaded');
+
     
