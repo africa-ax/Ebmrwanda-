@@ -1,103 +1,76 @@
-// Stock Model - ENFORCES THE GOLDEN RULE
-// ONE ownerId + ONE productId = ONE stock document ONLY
+// Stock Model Updates
 
 /**
- * 🔒 GOLDEN RULE ENFORCER
+ * Get all stock owned by a specific seller (e.g., Manufacturer)
+ * Used by Buyers/Distributors during purchase
  */
-async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type = STOCK_TYPES.INVENTORY) {
+async function getOwnerStock(ownerId, type = null) {
     try {
-        if (!ownerId || !productId) {
-            return { success: false, error: 'Owner ID and Product ID are required' };
+        if (!ownerId) {
+            console.error("getOwnerStock: ownerId is missing");
+            return [];
         }
 
-        const product = await getProduct(productId);
-        if (!product) {
-            return { success: false, error: ERROR_MESSAGES.PRODUCT_NOT_FOUND };
+        // Base query: get stock for this specific owner
+        let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', ownerId);
+
+        // Filter by type (usually 'inventory' for purchases)
+        if (type) {
+            query = query.where('type', '==', type);
         }
 
-        // 🔒 Check if stock already exists for this ownerId + productId
-        const existingStockQuery = await db.collection(COLLECTIONS.STOCK)
-            .where('ownerId', '==', ownerId)
-            .where('productId', '==', productId)
-            .where('type', '==', type)
-            .limit(1)
-            .get();
+        const snapshot = await query.get();
+        
+        const stockItems = [];
+        snapshot.forEach(doc => {
+            stockItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
 
-        if (!existingStockQuery.empty) {
-            const stockDoc = existingStockQuery.docs[0];
-            const existingStock = stockDoc.data();
-            const newQuantity = existingStock.quantity + quantity;
+        // 🛠️ SORT LOCALLY: This prevents the app from crashing if 
+        // the composite index isn't finished building yet.
+        return stockItems.sort((a, b) => {
+            const dateA = a.updatedAt?.seconds || 0;
+            const dateB = b.updatedAt?.seconds || 0;
+            return dateB - dateA;
+        });
 
-            if (newQuantity <= 0) {
-                await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).delete();
-                return { success: true, action: 'deleted', finalQuantity: 0 };
-            }
-
-            const updates = {
-                quantity: newQuantity,
-                updatedAt: getTimestamp(),
-                // Sync product info in case it changed
-                productName: product.name,
-                productSKU: product.sku,
-                productUnit: product.unit
-            };
-
-            if (sellingPrice !== undefined) updates.sellingPrice = sellingPrice;
-
-            await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).update(updates);
-
-            return {
-                success: true,
-                action: 'updated',
-                stockId: stockDoc.id,
-                finalQuantity: newQuantity
-            };
-
-        } else {
-            // NEW STOCK CREATION
-            if (quantity < 0) return { success: false, error: ERROR_MESSAGES.INSUFFICIENT_STOCK };
-            if (sellingPrice === undefined) return { success: false, error: 'Selling price is required' };
-
-            const stockRef = db.collection(COLLECTIONS.STOCK).doc();
-            const newStock = {
-                id: stockRef.id,
-                ownerId: ownerId,
-                productId: productId,
-                productName: product.name,
-                productSKU: product.sku,
-                productUnit: product.unit,
-                quantity: quantity,
-                sellingPrice: sellingPrice,
-                type: type,
-                createdAt: getTimestamp(),
-                updatedAt: getTimestamp()
-            };
-
-            await stockRef.set(newStock);
-            return { success: true, action: 'created', stockId: stockRef.id, finalQuantity: quantity };
-        }
     } catch (error) {
-        console.error('Error in addOrUpdateStock:', error);
-        return { success: false, error: error.message };
+        console.error('❌ Error in getOwnerStock:', error);
+        
+        // Detailed logging for debugging
+        if (error.message.includes('index')) {
+            console.warn('⚠️ MISSING INDEX: Copy the link from the browser console error above to create the required Firestore index.');
+        }
+        return [];
     }
 }
 
 /**
- * Get current user's stock
- * FIX: Use direct auth UID to ensure we don't miss records during sync
+ * Check specifically if a seller has enough stock for an order
  */
-async function getMyStock(type = null) {
-    const authUser = firebase.auth().currentUser;
-    if (!authUser) return [];
-
+async function checkStockAvailability(sellerId, productId, requestedQty) {
     try {
-        let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', authUser.uid);
-        if (type) query = query.where('type', '==', type);
+        const snapshot = await db.collection(COLLECTIONS.STOCK)
+            .where('ownerId', '==', sellerId)
+            .where('productId', '==', productId)
+            .where('type', '==', STOCK_TYPES.INVENTORY)
+            .limit(1)
+            .get();
 
-        const snapshot = await query.get();
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        if (snapshot.empty) {
+            return { sufficient: false, available: 0 };
+        }
+
+        const stockData = snapshot.docs[0].data();
+        return {
+            sufficient: stockData.quantity >= requestedQty,
+            available: stockData.quantity
+        };
     } catch (error) {
-        console.error('Error getting my stock:', error);
-        return [];
+        console.error('Error checking availability:', error);
+        return { sufficient: false, available: 0 };
     }
-    }
+                                                           }
