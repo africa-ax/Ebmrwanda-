@@ -256,11 +256,15 @@ async function getUserTransactions(userId, role = 'all') {
  * @returns {Promise<Array>} Array of transactions
  */
 async function getMyTransactions(role = 'all') {
-    if (!currentUser) {
+    // Get the REAL Firebase authenticated user
+    const authUser = firebase.auth().currentUser;
+    
+    if (!authUser) {
+        console.warn('No authenticated user for transactions');
         return [];
     }
 
-    return await getUserTransactions(currentUser.uid, role);
+    return await getUserTransactions(authUser.uid, role); // USE REAL FIREBASE UID
 }
 
 /**
@@ -354,6 +358,16 @@ async function getUserTransactionStats(userId) {
  */
 async function cancelTransaction(transactionId) {
     try {
+        // Get the REAL Firebase authenticated user
+        const authUser = firebase.auth().currentUser;
+        
+        if (!authUser) {
+            return {
+                success: false,
+                error: 'You must be logged in'
+            };
+        }
+
         const transaction = await getTransaction(transactionId);
         
         if (!transaction) {
@@ -370,8 +384,8 @@ async function cancelTransaction(transactionId) {
             };
         }
 
-        // Only allow seller to cancel
-        if (transaction.sellerId !== currentUser.uid) {
+        // Only allow seller to cancel using REAL UID
+        if (transaction.sellerId !== authUser.uid) {
             return {
                 success: false,
                 error: ERROR_MESSAGES.UNAUTHORIZED
