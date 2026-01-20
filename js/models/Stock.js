@@ -147,3 +147,83 @@ async function checkStockAvailability(sellerId, productId, requestedQty) {
         return { sufficient: false, available: 0 };
     }
                 }
+
+/**
+ * Transfer stock from a seller to a buyer
+ * This is used during order confirmation to move inventory
+ */
+async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice) {
+    const batch = db.batch();
+    
+    try {
+        // 1. Find Seller's Stock
+        const sellerStockQuery = await db.collection(COLLECTIONS.STOCK)
+            .where('ownerId', '==', sellerId)
+            .where('productId', '==', productId)
+            .limit(1)
+            .get();
+
+        if (sellerStockQuery.empty) {
+            return { success: false, error: 'Seller does not have this product in stock' };
+        }
+
+        const sellerStockDoc = sellerStockQuery.docs[0];
+        const sellerStockData = sellerStockDoc.data();
+
+        if (sellerStockData.quantity < quantity) {
+            return { success: false, error: 'Insufficient seller stock' };
+        }
+
+        // 2. Find or Prepare Buyer's Stock
+        const buyerStockQuery = await db.collection(COLLECTIONS.STOCK)
+            .where('ownerId', '==', buyerId)
+            .where('productId', '==', productId)
+            .limit(1)
+            .get();
+
+        // 3. Update Seller (Decrease)
+        const newSellerQty = sellerStockData.quantity - quantity;
+        if (newSellerQty === 0) {
+            batch.delete(sellerStockDoc.ref);
+        } else {
+            batch.update(sellerStockDoc.ref, {
+                quantity: newSellerQty,
+                updatedAt: getTimestamp()
+            });
+        }
+
+        // 4. Update or Create Buyer Stock (Increase)
+        if (!buyerStockQuery.empty) {
+            const buyerStockDoc = buyerStockQuery.docs[0];
+            batch.update(buyerStockDoc.ref, {
+                quantity: buyerStockDoc.data().quantity + quantity,
+                sellingPrice: buyerPrice, // Update to price they just paid
+                updatedAt: getTimestamp()
+            });
+        } else {
+            const newBuyerStockRef = db.collection(COLLECTIONS.STOCK).doc();
+            batch.set(newBuyerStockRef, {
+                id: newBuyerStockRef.id,
+                ownerId: buyerId,
+                productId: productId,
+                productName: sellerStockData.productName,
+                productSKU: sellerStockData.productSKU,
+                productUnit: sellerStockData.productUnit,
+                quantity: quantity,
+                sellingPrice: buyerPrice,
+                type: STOCK_TYPES.INVENTORY,
+                createdAt: getTimestamp(),
+                updatedAt: getTimestamp()
+            });
+        }
+
+        // Execute all changes at once
+        await batch.commit();
+        return { success: true };
+
+    } catch (error) {
+        console.error('Transfer stock error:', error);
+        return { success: false, error: error.message };
+    }
+    }
+        
