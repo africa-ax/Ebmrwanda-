@@ -213,34 +213,95 @@ async function getMyOrders(status = null) {
     return await getOrdersForBuyer(currentUser.uid, status);
 }
 
-// Logic enhancement for Manufacturers purchasing stock
-async function confirmPurchaseAsRawMaterial(orderId) {
-    // This is called when a manufacturer confirms they have received 
-    // a purchase and wants to add it to their 'rawMaterials' stock.
+/**
+ * Confirm order (seller only)
+ * This triggers stock transfer and invoice generation
+ */
+async function confirmOrder(orderId, buyerSellingPrice = null) {
     try {
         const order = await getOrder(orderId);
-        if (!order || order.buyerId !== currentUser.uid) return { success: false };
+        if (!order) {
+            return { success: false, error: 'Order not found' };
+        }
 
+        // Verify seller
+        if (order.sellerId !== currentUser.uid) {
+            return { success: false, error: ERROR_MESSAGES.UNAUTHORIZED };
+        }
+
+        // Verify status
+        if (order.status !== ORDER_STATUS.PENDING) {
+            return { success: false, error: 'Order is not pending' };
+        }
+
+        // Process each item and transfer stock
         for (const item of order.items) {
-            // We use addOrUpdateStock but explicitly set the type to RAW_MATERIAL
-            await addOrUpdateStock(
+            // Use provided resale price or default to the price they paid
+            const finalBuyerPrice = buyerSellingPrice || item.pricePerUnit;
+            
+            const transferResult = await transferStock(
+                order.sellerId,
                 order.buyerId,
                 item.productId,
                 item.quantity,
-                item.pricePerUnit,
-                STOCK_TYPES.RAW_MATERIAL // Force type to raw material
+                finalBuyerPrice
             );
+
+            if (!transferResult.success) {
+                return {
+                    success: false,
+                    error: `Failed to transfer stock for ${item.productName}: ${transferResult.error}`
+                };
+            }
         }
-        
-        // Update order status to completed
+
+        // Create transaction record
+        const transactionRef = db.collection(COLLECTIONS.TRANSACTIONS).doc();
+        const transaction = {
+            id: transactionRef.id,
+            orderId: order.id,
+            sellerId: order.sellerId,
+            sellerName: order.sellerName,
+            sellerRole: order.sellerRole,
+            buyerId: order.buyerId,
+            buyerName: order.buyerName,
+            buyerRole: order.buyerRole,
+            items: order.items,
+            subtotal: order.subtotal,
+            totalVAT: order.totalVAT,
+            totalAmount: order.totalAmount,
+            type: TRANSACTION_TYPES.SALE,
+            timestamp: getTimestamp(),
+            status: 'completed'
+        };
+        await transactionRef.set(transaction);
+
+        // Generate invoice
+        const invoiceResult = await generateInvoiceFromOrder(order, transaction.id);
+
+        // Update order status
         await db.collection(COLLECTIONS.ORDERS).doc(orderId).update({
-            status: ORDER_STATUS.COMPLETED,
-            receivedAs: 'rawMaterial'
+            status: ORDER_STATUS.CONFIRMED,
+            confirmedAt: getTimestamp(),
+            transactionId: transaction.id,
+            invoiceId: invoiceResult.success ? invoiceResult.invoice.id : null,
+            updatedAt: getTimestamp()
         });
 
-        return { success: true };
+        console.log('Order confirmed:', orderId);
+        return {
+            success: true,
+            transaction: transaction,
+            invoice: invoiceResult.success ? invoiceResult.invoice : null,
+            message: 'Order confirmed successfully'
+        };
+
     } catch (error) {
-        return { success: false, error: error.message };
+        console.error('Error confirming order:', error);
+        return {
+            success: false,
+            error: error.message || 'Failed to confirm order'
+        };
     }
 }
 
@@ -324,7 +385,7 @@ async function generateInvoiceFromOrder(order, transactionId) {
         const invoiceRef = db.collection(COLLECTIONS.INVOICES).doc();
         const invoice = {
             id: invoiceRef.id,
-            invoiceNumber: generateInvoiceNumber(),
+            invoiceNumber: generateInvoiceNumber(), // Ensure this helper exists in Invoice.js
             orderId: order.id,
             transactionId: transactionId,
             
