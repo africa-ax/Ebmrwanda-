@@ -293,4 +293,34 @@ async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice)
     }
 }
 
+/**
+ * Check specifically if a seller has enough stock for an order
+ * @param {string} sellerId - Seller UID
+ * @param {string} productId - Product ID
+ * @param {number} requestedQty - Quantity buyer wants
+ * @returns {Promise<Object>} Object with sufficient flag and available amount
+ */
+async function checkStockAvailability(sellerId, productId, requestedQty) {
+    try {
+        const snapshot = await db.collection(COLLECTIONS.STOCK)
+            .where('ownerId', '==', sellerId)
+            .where('productId', '==', productId)
+            .where('type', '==', STOCK_TYPES.INVENTORY)
+            .limit(1)
+            .get();
+
+        if (snapshot.empty) {
+            return { sufficient: false, available: 0 };
+        }
+
+        const stockData = snapshot.docs[0].data();
+        return {
+            sufficient: stockData.quantity >= requestedQty,
+            available: stockData.quantity
+        };
+    } catch (error) {
+        console.error('Error checking availability:', error);
+        return { sufficient: false, available: 0 };
+    }
+            }
 console.log('Stock model loaded - GOLDEN RULE enforced with resale support');
