@@ -9,7 +9,7 @@ async function showInventoryPage() {
         return;
     }
 
-    // Check if user has inventory
+    // Check if user has inventory capabilities based on role constants
     const capabilities = ROLE_CAPABILITIES[currentUserData.role];
     if (!capabilities.hasInventory) {
         mainContent.innerHTML = `
@@ -28,59 +28,18 @@ async function showInventoryPage() {
                 <h2 style="color: #667eea;">📊 My Inventory</h2>
                 <div>
                     ${currentUserData.role === ROLES.MANUFACTURER ? 
-                        '<button class="btn-primary" onclick="showAddStockForm()">+ Add Stock</button>' : ''}
+                        '<button class="btn-primary" onclick="showAddStockForm()">+ Add New Product Stock</button>' : ''}
                     <button class="btn-secondary" onclick="loadDashboard('${currentUserData.role}')">Back</button>
                 </div>
             </div>
 
-            <!-- Add Stock Form (Manufacturers only, hidden by default) -->
-            ${currentUserData.role === ROLES.MANUFACTURER ? `
-            <div id="addStockForm" style="display: none; background: #f5f5f5; padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
-                <h3 style="margin-bottom: 1rem;">Add Inventory Stock</h3>
-                <form id="stockForm" onsubmit="handleAddStock(event)">
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                        <div class="form-group">
-                            <label for="stockProduct">Product *</label>
-                            <select id="stockProduct" required>
-                                <option value="">Select Product</option>
-                            </select>
-                            <small style="color: #999;">
-                                <span id="productLoadingStatus">Loading products...</span>
-                            </small>
-                        </div>
-                        <div class="form-group">
-                            <label for="stockQuantity">Quantity *</label>
-                            <input type="number" id="stockQuantity" step="0.01" min="0.01" required placeholder="e.g., 100">
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label for="stockPrice">Selling Price Per Unit *</label>
-                        <input type="number" id="stockPrice" step="0.01" min="0.01" required placeholder="e.g., 50.00">
-                    </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" class="btn-success">Add Stock</button>
-                        <button type="button" class="btn-secondary" onclick="hideAddStockForm()">Cancel</button>
-                    </div>
-                    <p id="stockFormError" class="error-message"></p>
-                    <p id="stockFormSuccess" class="success-message"></p>
-                </form>
-            </div>
-            ` : ''}
-
-            <!-- Search Bar -->
-            <div class="form-group" style="margin-bottom: 1.5rem;">
-                <input type="text" id="inventorySearch" placeholder="Search inventory by product name or SKU..." 
-                       onkeyup="filterInventory()" style="width: 100%;">
+            <div style="display: grid; grid-template-columns: 1fr auto; gap: 1rem; margin-bottom: 1.5rem;">
+                <input type="text" id="inventorySearch" placeholder="🔍 Search by product name or SKU..." onkeyup="filterInventory()" style="padding: 0.8rem; border: 2px solid #eee; border-radius: 8px;">
+                <button class="btn-secondary" onclick="loadInventoryList()">🔄 Refresh</button>
             </div>
 
-            <!-- Stock Summary -->
-            <div id="stockSummary" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem;">
-                <!-- Summary cards will be inserted here -->
-            </div>
-
-            <!-- Inventory List -->
-            <div id="inventoryList">
-                <div style="text-align: center; padding: 2rem;">
+            <div id="inventoryListContainer" class="table-responsive">
+                <div style="text-align: center; padding: 3rem;">
                     <div class="spinner"></div>
                     <p>Loading inventory...</p>
                 </div>
@@ -88,69 +47,40 @@ async function showInventoryPage() {
         </div>
     `;
 
-    // Load inventory first
     await loadInventoryList();
-    
-    // Load products for stock form (manufacturers only) - this will happen in background
-    if (currentUserData.role === ROLES.MANUFACTURER) {
-        loadProductsForStockForm();
-    }
 }
 
 /**
  * Load and display inventory list
  */
 async function loadInventoryList() {
-    const inventoryListDiv = document.getElementById('inventoryList');
-    const summaryDiv = document.getElementById('stockSummary');
+    const container = document.getElementById('inventoryListContainer');
     
     try {
+        // Fetch stock items for the current user
         const stockItems = await getMyStock(STOCK_TYPES.INVENTORY);
 
-        // Calculate summary
-        const totalItems = stockItems.length;
-        const totalValue = stockItems.reduce((sum, item) => sum + (item.quantity * item.sellingPrice), 0);
-        const lowStockItems = stockItems.filter(item => item.quantity < 10).length;
-
-        summaryDiv.innerHTML = `
-            <div class="card" style="padding: 1rem;">
-                <h4 style="color: #667eea; margin-bottom: 0.5rem;">${totalItems}</h4>
-                <p style="color: #666; font-size: 0.9rem;">Total Products</p>
-            </div>
-            <div class="card" style="padding: 1rem;">
-                <h4 style="color: #4caf50; margin-bottom: 0.5rem;">${totalValue.toFixed(2)}</h4>
-                <p style="color: #666; font-size: 0.9rem;">Total Value</p>
-            </div>
-            <div class="card" style="padding: 1rem;">
-                <h4 style="color: #f44336; margin-bottom: 0.5rem;">${lowStockItems}</h4>
-                <p style="color: #666; font-size: 0.9rem;">Low Stock Items</p>
-            </div>
-        `;
-
         if (stockItems.length === 0) {
-            inventoryListDiv.innerHTML = `
-                <div style="text-align: center; padding: 3rem; color: #999;">
-                    <p style="font-size: 1.2rem;">No inventory yet</p>
-                    <p>${currentUserData.role === ROLES.MANUFACTURER ? 
-                        'Click "Add Stock" to add your first inventory item' : 
-                        'Purchase products to see them here'}</p>
+            container.innerHTML = `
+                <div style="text-align: center; padding: 3rem; color: #999; border: 2px dashed #eee; border-radius: 8px;">
+                    <p>Your inventory is currently empty.</p>
                 </div>
             `;
             return;
         }
 
         let html = `
-            <table id="inventoryTable">
+            <table class="table" id="inventoryTable">
                 <thead>
                     <tr>
                         <th>Product</th>
                         <th>SKU</th>
                         <th>Quantity</th>
                         <th>Unit</th>
-                        <th>Price/Unit</th>
+                        <th>Current Price</th>
                         <th>Total Value</th>
                         <th>Last Updated</th>
-                        ${currentUserData.role === ROLES.MANUFACTURER ? '<th>Actions</th>' : ''}
+                        <th>Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -158,211 +88,89 @@ async function loadInventoryList() {
 
         stockItems.forEach(stock => {
             const totalValue = stock.quantity * stock.sellingPrice;
-            const updatedDate = stock.updatedAt?.toDate?.() || new Date();
-            const lowStock = stock.quantity < 10;
+            const updatedDate = stock.updatedAt?.toDate ? stock.updatedAt.toDate() : new Date();
 
             html += `
-                <tr data-product-name="${stock.productName.toLowerCase()}" 
-                    data-product-sku="${stock.productSKU.toLowerCase()}"
-                    style="${lowStock ? 'background-color: #fff3cd;' : ''}">
-                    <td>
-                        <strong>${stock.productName}</strong>
-                        ${lowStock ? '<span style="color: #f44336; font-size: 0.8rem;"> ⚠️ Low Stock</span>' : ''}
-                    </td>
-                    <td>${stock.productSKU}</td>
+                <tr data-product-name="${stock.productName.toLowerCase()}" data-product-sku="${stock.productSKU.toLowerCase()}">
+                    <td><strong>${stock.productName}</strong></td>
+                    <td><code>${stock.productSKU}</code></td>
                     <td><strong>${stock.quantity}</strong></td>
                     <td>${stock.productUnit}</td>
                     <td>${stock.sellingPrice.toFixed(2)}</td>
-                    <td><strong>${totalValue.toFixed(2)}</strong></td>
-                    <td>${updatedDate.toLocaleDateString()} ${updatedDate.toLocaleTimeString()}</td>
-                    ${currentUserData.role === ROLES.MANUFACTURER ? `
+                    <td>${totalValue.toFixed(2)}</td>
+                    <td>${updatedDate.toLocaleDateString()}</td>
                     <td>
-                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.9rem;" 
+                        <button class="btn-primary" style="padding: 0.4rem 0.8rem; font-size: 0.85rem;" 
                                 onclick="showUpdateStockModal('${stock.id}', '${stock.productName}', ${stock.quantity}, ${stock.sellingPrice})">
-                            Update
+                            Set Resale Price
                         </button>
                     </td>
-                    ` : ''}
                 </tr>
             `;
         });
 
-        html += `
-                </tbody>
-            </table>
-        `;
-
-        inventoryListDiv.innerHTML = html;
+        html += `</tbody></table>`;
+        container.innerHTML = html;
 
     } catch (error) {
         console.error('Error loading inventory:', error);
-        inventoryListDiv.innerHTML = `
-            <div style="text-align: center; padding: 2rem; color: #f44336;">
-                <p>Error loading inventory. Please try again.</p>
-            </div>
-        `;
+        container.innerHTML = `<p class="error-message">Error loading inventory. Please try again.</p>`;
     }
 }
 
 /**
- * Load products for stock form dropdown
+ * Show modal to update price or quantity
  */
-async function loadProductsForStockForm() {
-    const selectElement = document.getElementById('stockProduct');
-    const statusElement = document.getElementById('productLoadingStatus');
-    
-    if (!selectElement) return;
-
-    try {
-        statusElement.textContent = 'Loading your products...';
-        statusElement.style.color = '#667eea';
-        
-        const products = await getMyProducts();
-        
-        selectElement.innerHTML = '<option value="">Select Product</option>';
-        
-        if (products.length === 0) {
-            selectElement.innerHTML = '<option value="">No products created yet</option>';
-            statusElement.textContent = 'Create a product first!';
-            statusElement.style.color = '#f44336';
-            return;
-        }
-        
-        products.forEach(product => {
-            selectElement.innerHTML += `<option value="${product.id}">${product.name} (${product.sku})</option>`;
-        });
-        
-        statusElement.textContent = `${products.length} product(s) available`;
-        statusElement.style.color = '#4caf50';
-        
-    } catch (error) {
-        console.error('Error loading products:', error);
-        selectElement.innerHTML = '<option value="">Error loading products</option>';
-        statusElement.textContent = 'Error loading products. Refresh page.';
-        statusElement.style.color = '#f44336';
-    }
-}
-
-/**
- * Show add stock form
- */
-async function showAddStockForm() {
-    const formElement = document.getElementById('addStockForm');
-    formElement.style.display = 'block';
-    
-    // Reload products to get latest list
-    await loadProductsForStockForm();
-    
-    document.getElementById('stockProduct').focus();
-}
-
-/**
- * Hide add stock form
- */
-function hideAddStockForm() {
-    document.getElementById('addStockForm').style.display = 'none';
-    document.getElementById('stockForm').reset();
-    document.getElementById('stockFormError').textContent = '';
-    document.getElementById('stockFormSuccess').textContent = '';
-}
-
-/**
- * Handle add stock form submission
- */
-async function handleAddStock(event) {
-    event.preventDefault();
-
-    const errorElement = document.getElementById('stockFormError');
-    const successElement = document.getElementById('stockFormSuccess');
-    errorElement.textContent = '';
-    successElement.textContent = '';
-
-    const productId = document.getElementById('stockProduct').value;
-    const quantity = parseFloat(document.getElementById('stockQuantity').value);
-    const sellingPrice = parseFloat(document.getElementById('stockPrice').value);
-
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    submitBtn.disabled = true;
-    submitBtn.textContent = 'Processing...';
-
-    // Use direct currentUser.uid from firebase-config
-    const result = await addOrUpdateStock(
-        firebase.auth().currentUser.uid, 
-        productId,
-        quantity,
-        sellingPrice,
-        STOCK_TYPES.INVENTORY
-    );
-
-    if (result.success) {
-        successElement.textContent = `Stock ${result.action} successfully!`;
-        document.getElementById('stockForm').reset();
-        
-        // IMPORTANT: Wait briefly for Firestore to propagate the new document
-        setTimeout(async () => {
-            await loadInventoryList();
-            hideAddStockForm();
-        }, 800);
-    } else {
-        errorElement.textContent = result.error;
-        submitBtn.disabled = false;
-        submitBtn.textContent = 'Add Stock';
-    }
-}
-
-/**
- * Show update stock modal
- */
-function showUpdateStockModal(stockId, productName, currentQuantity, currentPrice) {
-    const modalHTML = `
-        <div id="updateStockModal" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-                background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000;">
-            <div style="background: white; padding: 2rem; border-radius: 12px; max-width: 500px; width: 90%;">
-                <h3 style="margin-bottom: 1rem;">Update Stock: ${productName}</h3>
-                <p style="color: #666; margin-bottom: 1rem;">Current Quantity: <strong>${currentQuantity}</strong></p>
+function showUpdateStockModal(stockId, productName, currentQty, currentPrice) {
+    const modalHtml = `
+        <div id="updateStockModal" class="modal-overlay">
+            <div class="modal-content" style="max-width: 400px;">
+                <h3 style="margin-bottom: 1.5rem;">Update Resale Details</h3>
+                <p style="margin-bottom: 1rem;">Product: <strong>${productName}</strong></p>
+                
                 <form id="updateStockForm" onsubmit="handleUpdateStock(event, '${stockId}')">
                     <div class="form-group">
-                        <label for="updateQuantity">Add/Remove Quantity *</label>
-                        <input type="number" id="updateQuantity" step="0.01" required 
-                               placeholder="Use negative to remove (e.g., -10)">
-                        <small style="color: #999;">Enter positive number to add, negative to remove</small>
+                        <label>Current Quantity: ${currentQty}</label>
+                        <input type="number" id="updateQuantity" step="0.01" placeholder="Add/Subtract quantity (optional)">
+                        <small style="color: #666;">Enter positive to add, negative to subtract.</small>
                     </div>
+                    
                     <div class="form-group">
-                        <label for="updatePrice">Update Selling Price *</label>
-                        <input type="number" id="updatePrice" step="0.01" min="0.01" 
-                               value="${currentPrice}" required>
+                        <label>Resale Unit Price *</label>
+                        <input type="number" id="updatePrice" step="0.01" value="${currentPrice}" required>
+                        <small style="color: #666;">Set the price others will pay you.</small>
                     </div>
-                    <div style="display: flex; gap: 1rem;">
-                        <button type="submit" class="btn-success">Update Stock</button>
-                        <button type="button" class="btn-secondary" onclick="closeUpdateStockModal()">Cancel</button>
+                    
+                    <div style="display: flex; gap: 1rem; margin-top: 2rem;">
+                        <button type="submit" class="btn-primary" style="flex: 1;">Update Stock</button>
+                        <button type="button" class="btn-secondary" onclick="closeUpdateStockModal()" style="flex: 1;">Cancel</button>
                     </div>
                     <p id="updateStockError" class="error-message"></p>
                 </form>
             </div>
         </div>
     `;
-
-    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 /**
- * Handle update stock
+ * Handle stock/price update
  */
 async function handleUpdateStock(event, stockId) {
     event.preventDefault();
-
     const errorElement = document.getElementById('updateStockError');
-    errorElement.textContent = '';
-
-    const quantityChange = parseFloat(document.getElementById('updateQuantity').value);
+    
+    // Quantity change is optional; Price update is primary for non-manufacturers
+    const quantityChange = parseFloat(document.getElementById('updateQuantity').value) || 0;
     const newPrice = parseFloat(document.getElementById('updatePrice').value);
 
-    // Get the stock item to find productId
-    const stockItems = await getMyStock(STOCK_TYPES.INVENTORY);
-    const stockItem = stockItems.find(s => s.id === stockId);
+    // Find the stock item in the local list to get the productId
+    const myStock = await getMyStock(STOCK_TYPES.INVENTORY);
+    const stockItem = myStock.find(s => s.id === stockId);
 
     if (!stockItem) {
-        errorElement.textContent = 'Stock item not found';
+        errorElement.textContent = "Stock item not found.";
         return;
     }
 
@@ -371,6 +179,7 @@ async function handleUpdateStock(event, stockId) {
     submitBtn.textContent = 'Updating...';
     submitBtn.disabled = true;
 
+    // Use the core model function to apply changes
     const result = await addOrUpdateStock(
         currentUser.uid,
         stockItem.productId,
@@ -382,7 +191,7 @@ async function handleUpdateStock(event, stockId) {
     if (result.success) {
         closeUpdateStockModal();
         await loadInventoryList();
-        showSuccess(`Stock ${result.action} successfully!`);
+        showSuccess(`Stock details updated successfully!`);
     } else {
         submitBtn.textContent = originalText;
         submitBtn.disabled = false;
@@ -390,14 +199,9 @@ async function handleUpdateStock(event, stockId) {
     }
 }
 
-/**
- * Close update stock modal
- */
 function closeUpdateStockModal() {
     const modal = document.getElementById('updateStockModal');
-    if (modal) {
-        modal.remove();
-    }
+    if (modal) modal.remove();
 }
 
 /**
@@ -406,21 +210,14 @@ function closeUpdateStockModal() {
 function filterInventory() {
     const searchTerm = document.getElementById('inventorySearch').value.toLowerCase();
     const table = document.getElementById('inventoryTable');
-    
     if (!table) return;
 
     const rows = table.querySelectorAll('tbody tr');
-    
     rows.forEach(row => {
         const name = row.getAttribute('data-product-name');
         const sku = row.getAttribute('data-product-sku');
-        
-        if (name.includes(searchTerm) || sku.includes(searchTerm)) {
-            row.style.display = '';
-        } else {
-            row.style.display = 'none';
-        }
+        row.style.display = (name.includes(searchTerm) || sku.includes(searchTerm)) ? '' : 'none';
     });
 }
 
-console.log('Inventory view loaded');
+console.log('Inventory view loaded with resale price features');
