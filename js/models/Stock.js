@@ -3,18 +3,50 @@
 
 /**
  * 🔒 GOLDEN RULE ENFORCER
+ * Add or update stock for a product
+ * This function ensures: One ownerId + one productId = ONE stock document
+ * * @param {string} ownerId - User ID who owns the stock
+ * @param {string} productId - Product ID
+ * @param {number} quantity - Quantity to add (can be 0 if only updating price)
+ * @param {number} sellingPrice - Price per unit (owner sets their own price)
+ * @param {string} type - 'inventory' or 'rawMaterial'
+ * @returns {Promise<Object>} Result with stock info or error
  */
 async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type = STOCK_TYPES.INVENTORY) {
     try {
+        // Validate inputs
         if (!ownerId || !productId) {
-            return { success: false, error: 'Owner ID and Product ID are required' };
+            return {
+                success: false,
+                error: 'Owner ID and Product ID are required'
+            };
         }
 
+        // New logic: Allow quantity to be 0 if a sellingPrice is provided (Price Update)
+        if (typeof quantity !== 'number' || (quantity === 0 && sellingPrice === undefined)) {
+            return {
+                success: false,
+                error: ERROR_MESSAGES.INVALID_QUANTITY
+            };
+        }
+
+        if (sellingPrice !== undefined && (typeof sellingPrice !== 'number' || sellingPrice < VALIDATION.MIN_PRICE)) {
+            return {
+                success: false,
+                error: 'Invalid selling price'
+            };
+        }
+
+        // Verify product exists
         const product = await getProduct(productId);
         if (!product) {
-            return { success: false, error: ERROR_MESSAGES.PRODUCT_NOT_FOUND };
+            return {
+                success: false,
+                error: ERROR_MESSAGES.PRODUCT_NOT_FOUND
+            };
         }
 
+        // 🔒 Check if stock already exists for this ownerId + productId
         const existingStockQuery = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', ownerId)
             .where('productId', '==', productId)
@@ -25,22 +57,34 @@ async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type
         if (!existingStockQuery.empty) {
             const stockDoc = existingStockQuery.docs[0];
             const existingStock = stockDoc.data();
+            
+            // Calculate new quantity
             const newQuantity = existingStock.quantity + quantity;
 
+            // If quantity becomes 0 or less, delete the stock entry
             if (newQuantity <= 0) {
                 await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).delete();
-                return { success: true, action: 'deleted', finalQuantity: 0 };
+                return {
+                    success: true,
+                    action: 'deleted',
+                    finalQuantity: 0
+                };
             }
 
+            // Prepare updates
             const updates = {
                 quantity: newQuantity,
                 updatedAt: getTimestamp(),
+                // Sync product info in case it changed in the master list
                 productName: product.name,
                 productSKU: product.sku,
                 productUnit: product.unit
             };
 
-            if (sellingPrice !== undefined) updates.sellingPrice = sellingPrice;
+            // Update price if provided (Enables Resale Price Feature)
+            if (sellingPrice !== undefined) {
+                updates.sellingPrice = sellingPrice;
+            }
 
             await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).update(updates);
 
@@ -48,12 +92,25 @@ async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type
                 success: true,
                 action: 'updated',
                 stockId: stockDoc.id,
-                finalQuantity: newQuantity
+                finalQuantity: newQuantity,
+                price: sellingPrice || existingStock.sellingPrice
             };
 
         } else {
-            if (quantity < 0) return { success: false, error: ERROR_MESSAGES.INSUFFICIENT_STOCK };
-            if (sellingPrice === undefined) return { success: false, error: 'Selling price is required' };
+            // Create NEW stock entry
+            if (quantity <= 0) {
+                return {
+                    success: false,
+                    error: 'Cannot create new stock with zero or negative quantity'
+                };
+            }
+
+            if (sellingPrice === undefined) {
+                return {
+                    success: false,
+                    error: 'Selling price is required for new stock'
+                };
+            }
 
             const stockRef = db.collection(COLLECTIONS.STOCK).doc();
             const newStock = {
@@ -71,16 +128,26 @@ async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type
             };
 
             await stockRef.set(newStock);
-            return { success: true, action: 'created', stockId: stockRef.id, finalQuantity: quantity };
+
+            return {
+                success: true,
+                action: 'created',
+                stockId: stockRef.id,
+                finalQuantity: quantity
+            };
         }
+
     } catch (error) {
         console.error('Error in addOrUpdateStock:', error);
-        return { success: false, error: error.message };
+        return {
+            success: false,
+            error: error.message || 'Failed to update stock'
+        };
     }
 }
 
 /**
- * Get current user's stock (Used by Manufacturer)
+ * Get current user's stock
  */
 async function getMyStock(type = null) {
     const authUser = firebase.auth().currentUser;
@@ -88,13 +155,28 @@ async function getMyStock(type = null) {
 
     try {
         let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', authUser.uid);
-        if (type) query = query.where('type', '==', type);
+        
+        if (type) {
+            query = query.where('type', '==', type);
+        }
 
         const snapshot = await query.get();
-        const stockItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const stockItems = [];
         
-        // Sort locally to prevent "Error loading products" if index is missing
-        return stockItems.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+        snapshot.forEach(doc => {
+            stockItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        // Local sort to prevent errors if composite index isn't ready
+        return stockItems.sort((a, b) => {
+            const timeA = a.updatedAt?.seconds || 0;
+            const timeB = b.updatedAt?.seconds || 0;
+            return timeB - timeA;
+        });
+
     } catch (error) {
         console.error('Error getting my stock:', error);
         return [];
@@ -102,21 +184,30 @@ async function getMyStock(type = null) {
 }
 
 /**
- * Get all stock owned by a specific seller (Used by Buyers/Distributors/Retailers)
- * FIX: This function was missing in the previous files, causing the purchase view error.
+ * Get all stock owned by a specific seller
  */
 async function getOwnerStock(ownerId, type = null) {
     try {
         if (!ownerId) return [];
 
         let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', ownerId);
-        if (type) query = query.where('type', '==', type);
+        
+        if (type) {
+            query = query.where('type', '==', type);
+        }
 
         const snapshot = await query.get();
-        const stockItems = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const stockItems = [];
+        
+        snapshot.forEach(doc => {
+            stockItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
 
-        // Local sort to avoid requiring a composite index immediately
-        return stockItems.sort((a, b) => (b.updatedAt?.seconds || 0) - (a.updatedAt?.seconds || 0));
+        return stockItems;
+
     } catch (error) {
         console.error('Error in getOwnerStock:', error);
         return [];
@@ -124,39 +215,14 @@ async function getOwnerStock(ownerId, type = null) {
 }
 
 /**
- * Check stock availability before ordering
- */
-async function checkStockAvailability(sellerId, productId, requestedQty) {
-    try {
-        const snapshot = await db.collection(COLLECTIONS.STOCK)
-            .where('ownerId', '==', sellerId)
-            .where('productId', '==', productId)
-            .where('type', '==', STOCK_TYPES.INVENTORY)
-            .limit(1)
-            .get();
-
-        if (snapshot.empty) return { sufficient: false, available: 0 };
-
-        const stockData = snapshot.docs[0].data();
-        return {
-            sufficient: stockData.quantity >= requestedQty,
-            available: stockData.quantity
-        };
-    } catch (error) {
-        console.error('Error checking availability:', error);
-        return { sufficient: false, available: 0 };
-    }
-                }
-
-/**
  * Transfer stock from a seller to a buyer
- * This is used during order confirmation to move inventory
+ * Maintains the seller's price as the default buyer price upon receipt
  */
 async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice) {
     const batch = db.batch();
     
     try {
-        // 1. Find Seller's Stock
+        // 1. Get Seller's Stock
         const sellerStockQuery = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', sellerId)
             .where('productId', '==', productId)
@@ -164,17 +230,17 @@ async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice)
             .get();
 
         if (sellerStockQuery.empty) {
-            return { success: false, error: 'Seller does not have this product in stock' };
+            throw new Error('Seller does not have this product in stock');
         }
 
         const sellerStockDoc = sellerStockQuery.docs[0];
         const sellerStockData = sellerStockDoc.data();
 
         if (sellerStockData.quantity < quantity) {
-            return { success: false, error: 'Insufficient seller stock' };
+            throw new Error('Insufficient seller stock');
         }
 
-        // 2. Find or Prepare Buyer's Stock
+        // 2. Get Buyer's Stock
         const buyerStockQuery = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', buyerId)
             .where('productId', '==', productId)
@@ -182,12 +248,13 @@ async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice)
             .get();
 
         // 3. Update Seller (Decrease)
-        const newSellerQty = sellerStockData.quantity - quantity;
-        if (newSellerQty === 0) {
+        const newSellerQuantity = sellerStockData.quantity - quantity;
+        
+        if (newSellerQuantity === 0) {
             batch.delete(sellerStockDoc.ref);
         } else {
             batch.update(sellerStockDoc.ref, {
-                quantity: newSellerQty,
+                quantity: newSellerQuantity,
                 updatedAt: getTimestamp()
             });
         }
@@ -197,8 +264,8 @@ async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice)
             const buyerStockDoc = buyerStockQuery.docs[0];
             batch.update(buyerStockDoc.ref, {
                 quantity: buyerStockDoc.data().quantity + quantity,
-                sellingPrice: buyerPrice, // Update to price they just paid
                 updatedAt: getTimestamp()
+                // Note: We don't overwrite buyer's existing resale price here
             });
         } else {
             const newBuyerStockRef = db.collection(COLLECTIONS.STOCK).doc();
@@ -210,20 +277,20 @@ async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice)
                 productSKU: sellerStockData.productSKU,
                 productUnit: sellerStockData.productUnit,
                 quantity: quantity,
-                sellingPrice: buyerPrice,
+                sellingPrice: buyerPrice, // Initial resale price matches purchase price
                 type: STOCK_TYPES.INVENTORY,
                 createdAt: getTimestamp(),
                 updatedAt: getTimestamp()
             });
         }
 
-        // Execute all changes at once
         await batch.commit();
         return { success: true };
 
     } catch (error) {
-        console.error('Transfer stock error:', error);
+        console.error('Error transferring stock:', error);
         return { success: false, error: error.message };
     }
-    }
-        
+}
+
+console.log('Stock model loaded - GOLDEN RULE enforced with resale support');
