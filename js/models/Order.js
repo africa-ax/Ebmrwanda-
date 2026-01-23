@@ -216,6 +216,7 @@ async function getMyOrders(status = null) {
 /**
  * Confirm order (seller only)
  * This triggers stock transfer and invoice generation
+ * ⭐ UPDATED: Routes stock to Raw Materials for manufacturers
  */
 async function confirmOrder(orderId, buyerSellingPrice = null) {
     try {
@@ -239,12 +240,24 @@ async function confirmOrder(orderId, buyerSellingPrice = null) {
             // Use provided resale price or default to the price they paid
             const finalBuyerPrice = buyerSellingPrice || item.pricePerUnit;
             
-            const transferResult = await transferStock(
+            // ⭐ CRITICAL: Determine stock type based on buyer role
+            // If buyer is a manufacturer, stock goes to RAW_MATERIAL
+            // Otherwise, stock goes to INVENTORY
+            const stockType = order.buyerRole === ROLES.MANUFACTURER 
+                ? STOCK_TYPES.RAW_MATERIAL 
+                : STOCK_TYPES.INVENTORY;
+            
+            console.log(`🔄 Transferring stock for ${item.productName}:`);
+            console.log(`   Buyer Role: ${order.buyerRole}`);
+            console.log(`   Stock Type: ${stockType}`);
+            
+            const transferResult = await transferStockWithType(
                 order.sellerId,
                 order.buyerId,
                 item.productId,
                 item.quantity,
-                finalBuyerPrice
+                finalBuyerPrice,
+                stockType
             );
 
             if (!transferResult.success) {
@@ -288,7 +301,9 @@ async function confirmOrder(orderId, buyerSellingPrice = null) {
             updatedAt: getTimestamp()
         });
 
-        console.log('Order confirmed:', orderId);
+        console.log('✅ Order confirmed:', orderId);
+        console.log(`   Stock routed to: ${order.buyerRole === ROLES.MANUFACTURER ? 'Raw Materials' : 'Inventory'}`);
+        
         return {
             success: true,
             transaction: transaction,
@@ -434,4 +449,4 @@ function generateOrderNumber() {
     return `ORD-${year}${month}${day}-${random}`;
 }
 
-console.log('Order model loaded');
+console.log('✅ Order model loaded - with Raw Materials support');
