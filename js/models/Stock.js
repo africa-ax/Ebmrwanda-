@@ -1,196 +1,355 @@
-// Stock Model - LEGACY SAFE VERSION
-// Handles both 'inventory' and 'rawMaterial' without requiring new complex indexes
+// Stock Model - ENFORCES THE GOLDEN RULE
+// ONE ownerId + ONE productId = ONE stock document ONLY
 
 /**
  * 🔒 GOLDEN RULE ENFORCER
  * Add or update stock for a product
+ * This function ensures: One ownerId + one productId = ONE stock document
+ * * @param {string} ownerId - User ID who owns the stock
+ * @param {string} productId - Product ID
+ * @param {number} quantity - Quantity to add (can be 0 if only updating price)
+ * @param {number} sellingPrice - Price per unit (owner sets their own price)
+ * @param {string} type - 'inventory' or 'rawMaterial'
+ * @returns {Promise<Object>} Result with stock info or error
  */
 async function addOrUpdateStock(ownerId, productId, quantity, sellingPrice, type = STOCK_TYPES.INVENTORY) {
     try {
+        // Validate inputs
         if (!ownerId || !productId) {
-            return { success: false, error: 'Owner ID and Product ID are required' };
+            return {
+                success: false,
+                error: 'Owner ID and Product ID are required'
+            };
         }
 
+        // New logic: Allow quantity to be 0 if a sellingPrice is provided (Price Update)
+        if (typeof quantity !== 'number' || (quantity === 0 && sellingPrice === undefined)) {
+            return {
+                success: false,
+                error: ERROR_MESSAGES.INVALID_QUANTITY
+            };
+        }
+
+        if (sellingPrice !== undefined && (typeof sellingPrice !== 'number' || sellingPrice < VALIDATION.MIN_PRICE)) {
+            return {
+                success: false,
+                error: 'Invalid selling price'
+            };
+        }
+
+        // Verify product exists
         const product = await getProduct(productId);
         if (!product) {
-            return { success: false, error: 'Product not found' };
+            return {
+                success: false,
+                error: ERROR_MESSAGES.PRODUCT_NOT_FOUND
+            };
         }
 
-        // We query by Owner and Product only to remain compatible with existing indexes
-        const stockQuery = await db.collection(COLLECTIONS.STOCK)
+        // 🔒 Check if stock already exists for this ownerId + productId
+        const existingStockQuery = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', ownerId)
             .where('productId', '==', productId)
+            .where('type', '==', type)
+            .limit(1)
             .get();
 
-        // Look for a document that matches the type (or has no type if looking for inventory)
-        const stockDoc = stockQuery.docs.find(doc => {
-            const data = doc.data();
-            if (type === STOCK_TYPES.INVENTORY) {
-                return data.type === STOCK_TYPES.INVENTORY || !data.type;
-            }
-            return data.type === type;
-        });
+        if (!existingStockQuery.empty) {
+            const stockDoc = existingStockQuery.docs[0];
+            const existingStock = stockDoc.data();
+            
+            // Calculate new quantity
+            const newQuantity = existingStock.quantity + quantity;
 
-        if (stockDoc) {
-            const updateData = {
-                quantity: stockDoc.data().quantity + quantity,
-                updatedAt: getTimestamp()
-            };
-            if (sellingPrice !== undefined) {
-                updateData.sellingPrice = sellingPrice;
+            // If quantity becomes 0 or less, delete the stock entry
+            if (newQuantity <= 0) {
+                await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).delete();
+                return {
+                    success: true,
+                    action: 'deleted',
+                    finalQuantity: 0
+                };
             }
-            await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).update(updateData);
-            return { success: true, id: stockDoc.id };
+
+            // Prepare updates
+            const updates = {
+                quantity: newQuantity,
+                updatedAt: getTimestamp(),
+                // Sync product info in case it changed in the master list
+                productName: product.name,
+                productSKU: product.sku,
+                productUnit: product.unit
+            };
+
+            // Update price if provided (Enables Resale Price Feature)
+            if (sellingPrice !== undefined) {
+                updates.sellingPrice = sellingPrice;
+            }
+
+            await db.collection(COLLECTIONS.STOCK).doc(stockDoc.id).update(updates);
+
+            return {
+                success: true,
+                action: 'updated',
+                stockId: stockDoc.id,
+                finalQuantity: newQuantity,
+                price: sellingPrice || existingStock.sellingPrice
+            };
+
         } else {
-            const newStockRef = db.collection(COLLECTIONS.STOCK).doc();
-            const stockData = {
-                id: newStockRef.id,
+            // Create NEW stock entry
+            if (quantity <= 0) {
+                return {
+                    success: false,
+                    error: 'Cannot create new stock with zero or negative quantity'
+                };
+            }
+
+            if (sellingPrice === undefined) {
+                return {
+                    success: false,
+                    error: 'Selling price is required for new stock'
+                };
+            }
+
+            const stockRef = db.collection(COLLECTIONS.STOCK).doc();
+            const newStock = {
+                id: stockRef.id,
                 ownerId: ownerId,
                 productId: productId,
                 productName: product.name,
                 productSKU: product.sku,
                 productUnit: product.unit,
                 quantity: quantity,
-                sellingPrice: sellingPrice || 0,
-                type: type, // New items get the explicit type
+                sellingPrice: sellingPrice,
+                type: type,
                 createdAt: getTimestamp(),
                 updatedAt: getTimestamp()
             };
-            await newStockRef.set(stockData);
-            return { success: true, id: newStockRef.id };
+
+            await stockRef.set(newStock);
+
+            return {
+                success: true,
+                action: 'created',
+                stockId: stockRef.id,
+                finalQuantity: quantity
+            };
         }
+
     } catch (error) {
         console.error('Error in addOrUpdateStock:', error);
-        return { success: false, error: error.message };
+        return {
+            success: false,
+            error: error.message || 'Failed to update stock'
+        };
     }
 }
 
 /**
- * Transfer stock from a seller to a buyer
- * Logic: If buyer is Manufacturer, store as rawMaterial. Otherwise, inventory.
+ * Get current user's stock
  */
-async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice) {
+async function getMyStock(type = null) {
+    const authUser = firebase.auth().currentUser;
+    if (!authUser) return [];
+
+    try {
+        let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', authUser.uid);
+        
+        if (type) {
+            query = query.where('type', '==', type);
+        }
+
+        const snapshot = await query.get();
+        const stockItems = [];
+        
+        snapshot.forEach(doc => {
+            stockItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        // Local sort to prevent errors if composite index isn't ready
+        return stockItems.sort((a, b) => {
+            const timeA = a.updatedAt?.seconds || 0;
+            const timeB = b.updatedAt?.seconds || 0;
+            return timeB - timeA;
+        });
+
+    } catch (error) {
+        console.error('Error getting my stock:', error);
+        return [];
+    }
+}
+
+/**
+ * Get all stock owned by a specific seller
+ */
+async function getOwnerStock(ownerId, type = null) {
+    try {
+        if (!ownerId) return [];
+
+        let query = db.collection(COLLECTIONS.STOCK).where('ownerId', '==', ownerId);
+        
+        if (type) {
+            query = query.where('type', '==', type);
+        }
+
+        const snapshot = await query.get();
+        const stockItems = [];
+        
+        snapshot.forEach(doc => {
+            stockItems.push({
+                id: doc.id,
+                ...doc.data()
+            });
+        });
+
+        return stockItems;
+
+    } catch (error) {
+        console.error('Error in getOwnerStock:', error);
+        return [];
+    }
+}
+
+/**
+ * ⭐ NEW: Transfer stock with specific type (inventory or rawMaterial)
+ * @param {string} sellerId - Seller UID
+ * @param {string} buyerId - Buyer UID  
+ * @param {string} productId - Product ID
+ * @param {number} quantity - Quantity to transfer
+ * @param {number} buyerPrice - Price for buyer's stock
+ * @param {string} stockType - Type of stock ('inventory' or 'rawMaterial')
+ */
+async function transferStockWithType(sellerId, buyerId, productId, quantity, buyerPrice, stockType = STOCK_TYPES.INVENTORY) {
     const batch = db.batch();
     
     try {
-        // 1. Get Seller's Stock (Find inventory or untyped items)
-        const sellerSnapshot = await db.collection(COLLECTIONS.STOCK)
+        console.log(`🔄 transferStockWithType called:`);
+        console.log(`   Seller: ${sellerId}`);
+        console.log(`   Buyer: ${buyerId}`);
+        console.log(`   Product: ${productId}`);
+        console.log(`   Quantity: ${quantity}`);
+        console.log(`   Stock Type: ${stockType}`);
+
+        // 1. Get Seller's Stock (always from inventory)
+        const sellerStockQuery = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', sellerId)
             .where('productId', '==', productId)
+            .where('type', '==', STOCK_TYPES.INVENTORY)
+            .limit(1)
             .get();
 
-        const sellerStockDoc = sellerSnapshot.docs.find(doc => {
-            const d = doc.data();
-            return d.type === STOCK_TYPES.INVENTORY || !d.type;
-        });
-
-        if (!sellerStockDoc) throw new Error('Seller stock not found');
-        const sellerStockData = sellerStockDoc.data();
-
-        // 2. Determine Buyer's Target Type
-        const buyerDoc = await db.collection(COLLECTIONS.USERS).doc(buyerId).get();
-        const buyerData = buyerDoc.data();
-        const targetType = (buyerData && buyerData.role === ROLES.MANUFACTURER) 
-            ? STOCK_TYPES.RAW_MATERIAL 
-            : STOCK_TYPES.INVENTORY;
-
-        // 3. Get Buyer's existing stock for that specific target type
-        const buyerSnapshot = await db.collection(COLLECTIONS.STOCK)
-            .where('ownerId', '==', buyerId)
-            .where('productId', '==', productId)
-            .get();
-
-        const buyerStockDoc = buyerSnapshot.docs.find(doc => doc.data().type === targetType);
-
-        // 4. Update Seller
-        const newSellerQty = sellerStockData.quantity - quantity;
-        if (newSellerQty <= 0) {
-            batch.delete(sellerStockDoc.ref);
-        } else {
-            batch.update(sellerStockDoc.ref, {
-                quantity: newSellerQty,
-                updatedAt: getTimestamp()
-            });
+        if (sellerStockQuery.empty) {
+            throw new Error('Seller does not have this product in stock');
         }
 
-        // 5. Update or Create Buyer Stock
-        if (buyerStockDoc) {
-            batch.update(buyerStockDoc.ref, {
-                quantity: buyerStockDoc.data().quantity + quantity,
+        const sellerStockDoc = sellerStockQuery.docs[0];
+        const sellerStockData = sellerStockDoc.data();
+
+        if (sellerStockData.quantity < quantity) {
+            throw new Error('Insufficient seller stock');
+        }
+
+        // 2. Get Buyer's Stock (check for specified type)
+        const buyerStockQuery = await db.collection(COLLECTIONS.STOCK)
+            .where('ownerId', '==', buyerId)
+            .where('productId', '==', productId)
+            .where('type', '==', stockType)
+            .limit(1)
+            .get();
+
+        // 3. Update Seller (Decrease from inventory)
+        const newSellerQuantity = sellerStockData.quantity - quantity;
+        
+        if (newSellerQuantity === 0) {
+            batch.delete(sellerStockDoc.ref);
+            console.log(`   ✅ Seller stock deleted (reached 0)`);
+        } else {
+            batch.update(sellerStockDoc.ref, {
+                quantity: newSellerQuantity,
                 updatedAt: getTimestamp()
             });
+            console.log(`   ✅ Seller stock decreased to ${newSellerQuantity}`);
+        }
+
+        // 4. Update or Create Buyer Stock (with specified type)
+        if (!buyerStockQuery.empty) {
+            const buyerStockDoc = buyerStockQuery.docs[0];
+            const newBuyerQuantity = buyerStockDoc.data().quantity + quantity;
+            batch.update(buyerStockDoc.ref, {
+                quantity: newBuyerQuantity,
+                updatedAt: getTimestamp()
+            });
+            console.log(`   ✅ Buyer ${stockType} stock increased to ${newBuyerQuantity}`);
         } else {
-            const newRef = db.collection(COLLECTIONS.STOCK).doc();
-            batch.set(newRef, {
-                id: newRef.id,
+            const newBuyerStockRef = db.collection(COLLECTIONS.STOCK).doc();
+            batch.set(newBuyerStockRef, {
+                id: newBuyerStockRef.id,
                 ownerId: buyerId,
-                productId,
+                productId: productId,
                 productName: sellerStockData.productName,
                 productSKU: sellerStockData.productSKU,
                 productUnit: sellerStockData.productUnit,
-                quantity,
-                sellingPrice: buyerPrice || 0,
-                type: targetType,
+                quantity: quantity,
+                sellingPrice: buyerPrice,
+                type: stockType, // ⭐ Use specified type (inventory or rawMaterial)
                 createdAt: getTimestamp(),
                 updatedAt: getTimestamp()
             });
+            console.log(`   ✅ Buyer ${stockType} stock created with quantity ${quantity}`);
         }
 
         await batch.commit();
+        console.log(`✅ Stock transfer complete!`);
         return { success: true };
 
     } catch (error) {
-        console.error('Transfer Error:', error);
+        console.error('❌ Error transferring stock:', error);
         return { success: false, error: error.message };
     }
 }
 
 /**
- * Check if a seller has enough stock
+ * Transfer stock from a seller to a buyer (DEFAULT: goes to inventory)
+ * Maintains backward compatibility with existing code
+ */
+async function transferStock(sellerId, buyerId, productId, quantity, buyerPrice) {
+    // Default to INVENTORY type for backward compatibility
+    return await transferStockWithType(sellerId, buyerId, productId, quantity, buyerPrice, STOCK_TYPES.INVENTORY);
+}
+
+/**
+ * Check specifically if a seller has enough stock for an order
+ * @param {string} sellerId - Seller UID
+ * @param {string} productId - Product ID
+ * @param {number} requestedQty - Quantity buyer wants
+ * @returns {Promise<Object>} Object with sufficient flag and available amount
  */
 async function checkStockAvailability(sellerId, productId, requestedQty) {
     try {
         const snapshot = await db.collection(COLLECTIONS.STOCK)
             .where('ownerId', '==', sellerId)
             .where('productId', '==', productId)
+            .where('type', '==', STOCK_TYPES.INVENTORY)
+            .limit(1)
             .get();
 
-        const stockDoc = snapshot.docs.find(doc => {
-            const data = doc.data();
-            return data.type === STOCK_TYPES.INVENTORY || !data.type;
-        });
+        if (snapshot.empty) {
+            return { sufficient: false, available: 0 };
+        }
 
-        if (!stockDoc) return { sufficient: false, available: 0 };
-
-        const stockData = stockDoc.data();
+        const stockData = snapshot.docs[0].data();
         return {
             sufficient: stockData.quantity >= requestedQty,
             available: stockData.quantity
         };
     } catch (error) {
+        console.error('Error checking availability:', error);
         return { sufficient: false, available: 0 };
     }
 }
 
-/**
- * Get stock for current user by type
- */
-async function getMyStock(type = STOCK_TYPES.INVENTORY) {
-    try {
-        const snapshot = await db.collection(COLLECTIONS.STOCK)
-            .where('ownerId', '==', firebase.auth().currentUser.uid)
-            .get();
-
-        // Filter by type in JS to avoid index issues
-        return snapshot.docs
-            .map(doc => doc.data())
-            .filter(data => {
-                if (type === STOCK_TYPES.INVENTORY) {
-                    return data.type === STOCK_TYPES.INVENTORY || !data.type;
-                }
-                return data.type === type;
-            });
-    } catch (error) {
-        return [];
-    }
-    }
+console.log('✅ Stock model loaded - GOLDEN RULE enforced with Raw Materials support');
